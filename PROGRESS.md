@@ -83,14 +83,16 @@ next paid run proves it: an answered run should show 2 requests.
 blank lines inside events (every event was parsed as an unnamed `message`), and is now fixed.
 
 **7. Round-1 demo: Vercel UI + this PC via tunnel ($0 infra)**
-- Tunnel the API (e.g. `cloudflared tunnel --url http://127.0.0.1:8000`).
-- `API_ALLOWED_ORIGINS` += the Vercel origin; `web` env `NEXT_PUBLIC_API_URL` = tunnel URL.
-- `neon neon-auth domain add https://<app>.vercel.app` (trusted origins list is empty now).
-- **Push needs the user's go-ahead**: `.gitignore` commit first, then review `git status`
-  for secrets (`.env`, `keys.txt`, `web/.env.local`, `data/spend_ledger.jsonl` must stay out),
-  then code. Repo `github.com/Nekta1991/DATARAG` is **public**.
-- Vercel project from the repo, root `web/`. Env vars: `NEON_AUTH_BASE_URL`, a **new**
-  `NEON_AUTH_COOKIE_SECRET` (don't reuse the local one), `NEXT_PUBLIC_API_URL`.
+- **DONE 2026-09-22:** pushed with the user's go-ahead (`bac3fc7` .gitignore, `5dd084e` code, after a secret scan).
+  Preview route had already been deleted.
+- **DONE:** same-origin proxy `web/app/rag/api/[...path]/route.ts` (health/status/query only)
+  → `RAG_API_URL`; `page.tsx` passes `apiUrl="/rag"`. No CORS change or `NEXT_PUBLIC_API_URL`
+  needed. The proxy also sends `ngrok-skip-browser-warning` (ngrok's warning page).
+- **DONE:** Vercel project `web-gen-ai-teleapo/datarag` linked from `web/` (`.vercel/` gitignored).
+- **USER (auto mode blocked these):** start `ngrok http 8000`; set the Vercel env vars
+  `NEON_AUTH_BASE_URL`, a **new** `NEON_AUTH_COOKIE_SECRET`, and `RAG_API_URL` = ngrok URL; deploy; then
+  `neon neon-auth domain add https://<vercel domain>`.
+- Git auto-deploy: connect the repo in Vercel with root directory `web`.
 
 **8. Round 2: all on Vercel (option A)**
 Replace local bge with Voyage's rerank API; recalibrate the threshold and re-run
