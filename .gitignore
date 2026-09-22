@@ -1,0 +1,29 @@
+# Secrets — never commit
+.env
+.env.local
+*.key
+keys.txt
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Model + processing caches
+.cache/
+data/processed/
+data/chunks/
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+.neon
+node_modules/
+
+# Local spend ledger (moves to Neon for deployment)
+data/spend_ledger.jsonl
