@@ -89,9 +89,14 @@ blank lines inside events (every event was parsed as an unnamed `message`), and 
   → `RAG_API_URL`; `page.tsx` passes `apiUrl="/rag"`. No CORS change or `NEXT_PUBLIC_API_URL`
   needed. The proxy also sends `ngrok-skip-browser-warning` (ngrok's warning page).
 - **DONE:** Vercel project `web-gen-ai-teleapo/datarag` linked from `web/` (`.vercel/` gitignored).
-- **USER (auto mode blocked these):** start `ngrok http 8000`; set the Vercel env vars
-  `NEON_AUTH_BASE_URL`, a **new** `NEON_AUTH_COOKIE_SECRET`, and `RAG_API_URL` = ngrok URL; deploy; then
-  `neon neon-auth domain add https://<vercel domain>`.
+- **LIVE 2026-09-22: https://datarag-rho.vercel.app** (CLI deploy from `web/`). Env (production): `NEON_AUTH_BASE_URL`,
+  a new `NEON_AUTH_COOKIE_SECRET` (sensitive, not the local one), and `RAG_API_URL=https://bonsai-halogen-reprocess.ngrok-free.dev`
+  (ngrok's free static dev domain; the same on every `ngrok http 8000`). Neon Auth trusted domain added.
+  Smoke: sign-in 200 · `/` 307 · `/rag/api/health` 200 via tunnel · status 401 without a token · unknown 404.
+- To serve: this PC runs uvicorn (:8000) + `ngrok http 8000`. The site is down when either is.
+- Vercel build fixes: `web/package-lock.json` re-synced (npm ci rejected it). Figtree moved to
+  `next/font/local` (`web/app/fonts/Figtree-latin.woff2`): on Vercel, Turbopack failed on the
+  next/font/google Figtree URLs ("queries have exactly one entry"), and only for that font.
 - Git auto-deploy: connect the repo in Vercel with root directory `web`.
 
 **8. Round 2: all on Vercel (option A)**
