@@ -1,6 +1,6 @@
 # Progress log
 
-## ▶ NEXT SESSION — START HERE (written 2026-09-21)
+## ▶ NEXT SESSION — START HERE (written 2026-09-22, end of session)
 
 The dated session logs below are history. This section is the handoff: what exists,
 what is waiting on the user, and the ordered steps with costs and done-criteria.
@@ -9,119 +9,106 @@ what is waiting on the user, and the ordered steps with costs and done-criteria.
 
 | | State |
 |---|---|
-| **API spend** | **$0.0542 / $5.00** — ledger `data/spend_ledger.jsonl` (reconciled with the Anthropic console) |
+| **API spend** | **$0.2336 / $5.00**, from the ledger `data/spend_ledger.jsonl` |
+| Live site | **https://datarag-rho.vercel.app** (Vercel `web-gen-ai-teleapo/datarag`, CLI deploys from `web/`) |
+| Serving | Vercel UI → `/rag/api/*` proxy → `RAG_API_URL` = `https://bonsai-halogen-reprocess.ngrok-free.dev` (static ngrok domain) → uvicorn :8000 on this PC (GPU reranker). **The site is down unless uvicorn and `ngrok http 8000` both run here.** |
 | Corpus | 14 docs / 1,025 chunks in Neon `production` (`br-icy-butterfly-b3grfw5x`) |
 | Retrieval | hybrid (vector 20 ∪ char-bigram BM25 10) → bge-reranker-v2-m3 on CUDA → top 5 |
-| Agent | `rag/agent.py`, `claude-sonnet-5`, effort low, two-layer decline gate, hard limits, ledger |
-| API | `rag/api.py` (FastAPI + SSE), admin-only via Neon Auth JWT + `role=admin` |
-| Frontend | `web/` Next.js 16.3.5, sign-in + dashboard; stub ($0) default |
-| Neon Auth | enabled; **0 users** — admin not created yet |
-| Git | only `README.md` committed; **do not push** until the user says so |
-| Tests | `scripts/test_gates.py` 7/7, `scripts/test_api.py` 10/10 (both free) |
-| Docs | `MANUAL.md` + web mirror https://claude.ai/artifact/J1U69gY5YUBYznPztFrYY2 (rev 47), `docs/validation_questions.md`, `docs/dashboard_build_brief.md` |
-| Design mock | https://claude.ai/artifact/S3ApZuuSALLVkCoBoBLoHW (official-site palette, 「非公式デモ」) |
+| Agent | `rag/agent.py`, `claude-sonnet-5`, effort low, strict output tool (2 requests per answer, confirmed). Gate 1 = score ≥ 0.3 **or** the question names a corpus document; gate 2 = verbatim-quote check |
+| Neon Auth | enabled; **0 users**. The trusted domain `https://datarag-rho.vercel.app` is added, and localhost is allowed |
+| Git | `main` pushed to **public** `github.com/Nekta1991/DATARAG` (latest: validation run 1 + draft capture). Secret-scan before every push |
+| Tests (free) | `scripts/test_gates.py` 8/8, `scripts/test_api.py` 10/10 |
+| Validation | run 1 **8/10**, $0.1794: `docs/validation_results.md`, raw `data/validation_runs/20260922-224505_paid.json` |
+| Docs | `MANUAL.md` + web mirror https://claude.ai/artifact/J1U69gY5YUBYznPztFrYY2 (rev 47, **stale**: predates 2026-09-22), `docs/validation_questions.md`, `docs/dashboard_build_brief.md` (§2 event contract synced 2026-09-22) |
+| Frontend work | Claude Design is iterating on `web/app/dashboard.tsx` + CSS. **Don't edit those**; integrate through `page.tsx` / routes |
 
-### Waiting on the user
+### Auto mode blocks these (the user approves each via `/permissions`)
 
-- [ ] **Create the admin account.** Two ways; never ask for the password:
-      - Web (added 2026-09-22): `/auth/sign-in` → 「アカウントを新規登録」. It creates an ordinary account and
-        signs in immediately (no email verification: `require_email_verification: false`). Then set
-        role=admin, via MCP `update_auth_user_role` or `create_admin.py <email>` (it only sets the role if the account exists).
-      - Terminal: `.venv/Scripts/python.exe scripts/create_admin.py <admin email>` (hidden prompt).
+Paid runs (`run_validation.py --paid --yes`), `ngrok http`, and `vercel env add` were blocked by
+the auto-mode classifier until the user approved the exact command. A new argument list may
+need approval again: say what you're about to run and why, then stop.
 
-### Steps, in order
+### Open issues — resume here, in order
 
-**1. Start both servers ($0)**
-```bash
-PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe -m uvicorn rag.api:app --host 127.0.0.1 --port 8000
-cd web && npm run build && npx next start -p 3000
-```
-Open **http://localhost:3000** (not 127.0.0.1 — Neon Auth → `INVALID_ORIGIN` 403).
-Done when: `/api/health` shows `"warm": true`.
+**1. Restart uvicorn ($0), user action.** It was started before today's code changes, so the live
+site runs the OLD agent: no named-document gate (Q7-type questions decline at gate 1), and the
+non-strict output (3-request retries). Ctrl+C, then:
+`$env:PYTHONIOENCODING="utf-8"; .venv\Scripts\python.exe -m uvicorn rag.api:app --host 127.0.0.1 --port 8000`
+Done when: `curl https://datarag-rho.vercel.app/rag/api/health` → `"warm": true`.
 
-**2. Verify sign-in end to end ($0)**
-Sign in, reload (session persists), sign out, protected `/` redirects again.
-Header shows corpus, model and spend from `/api/status`. A non-admin account gets
-「管理者権限がありません」. Nothing here has been exercised with a real account yet.
+**2. Create the admin ($0).** The user registers on the live site: `/auth/sign-in` → 「アカウントを新規登録」.
+There is no email verification, so they are signed in straight away. Then set the role, without handling the password: MCP
+`update_auth_user_role` (project `lingering-fire-23301886`, branch `br-icy-butterfly-b3grfw5x`,
+look up the id in `neon_auth."user"` by email), or `create_admin.py <email>` (with an existing account it only sets the role).
+Done when: the dashboard loads and the header shows corpus/model/spend. Then test: reload keeps the session,
+sign-out, a non-admin account gets 「管理者権限がありません」. None of this has been exercised with a real account yet.
 
-**3. Stub run from the dashboard ($0)**
-北海道 question, 本番モード off. Done when the console shows RUN → EMBED → VECTOR →
-BM25 → RERANK → GATE 1 → AGENT → GATE 2 → DECLINE/ANSWER → COST, and the candidates
-table fills (gold chunk 268 at rank 1, score 0.8907). Then 「明日の東京の天気」 stops at GATE 1.
+**3. Q3 fails: table quotes ($0 fix, then a ~$0.02 rerun, confirm first).** The model stitched table cells into a
+quote (「補助額 ５万円～１５０万円未満 補助額 １５０万円～４５０万円以下」). The source is a markdown table
+(`| 補助金申請額 | … |`, chunks 301/302/304), so gate 2 correctly rejected it, but the answer was right.
+Options: (a) prompt: "when quoting a table, copy one row verbatim, including the `|` separators";
+(b) a table-aware check in `verify_citations`, e.g. accept a quote whose `|`-split cells all
+occur in one table row of the same passage. Prefer (a) first, since it's cheaper and keeps the gate strict. Then
+`run_validation.py --paid --yes --only 3`.
 
-**4. First paid run from the dashboard (~$0.03, cap $0.19) — ANNOUNCE COST AND CONFIRM FIRST**
-北海道 question, 本番モード on. Checks: answer + verified citation render; COST line
-matches the ledger; the one-citation-per-claim prompt left **no uncited paragraph**
-(the 2026-09-21 answer had one).
+**4. Q6 fails: `no_citation` (~$0.024 rerun, confirm first).** answerable=true, 0 citations, 1,398 output
+tokens. Cause unknown: the declined draft wasn't kept then. **Now kept:** `QueryResult.draft`
+in run files. Rerun `--only 6`, read `rows[].draft` in the run file. Suspects: a long 取消 list
+vs. "max 5 citations", or quotes dropped. Q6 grading still reports both rules (A ✗ · B ✗ on run 1).
 
-**5. Third request — DONE 2026-09-22 ($0), confirm on the next paid run**
-Cause (from token math): request 3 added ~1.4k cache-write tokens, too small for a
-5-passage search (~2.6k), so it was a re-sent `final_result` after a validation retry.
-pydantic-ai's output tool was non-strict by default. Fix: `ToolOutput(Answer, strict=True)`;
-Anthropic accepted the strict schema (`count_tokens`, free: 2,596 tokens for request 1).
-The ledger and CLI now log a per-request `trace` (tools called + any retry text), so the
-next paid run proves it: an answered run should show 2 requests.
+**5. Q6 rule A vs rule B (~$0.11, approved in plan; the commands may need `/permissions`).**
+- `run_validation.py --paid --yes --only 6 --shared-rules` (rule B prompt, `CITE_SHARED_RULES=1`)
+- `run_validation.py --paid --yes --only 2,3 --shared-rules` (does the line make the model mix 枠 figures?)
+Background ($0 analysis, in `docs/validation_questions.md` Q6): the 取消し article is identical in the 通常, both インボイス and
+セキュリティ 交付規程 (第27条), but different in 複数者連携 (第25条), which is not in Q6's top 5. Both rules
+fail a 「全ての枠」 claim. The user decides A or B after seeing the results. Each run overwrites
+`docs/validation_results.md`; the raw files persist, so use `--regrade` for free.
 
-**6. Step 5 — validation suite (~$0.30) — ANNOUNCE COST AND CONFIRM FIRST**
-- `scripts/run_validation.py` is BUILT. Free stub by default; `--paid` prints the estimate and
-  sends nothing; `--paid --yes` runs. `--only 1,8` runs a subset; `--regrade <run.json>` re-scores
-  a saved run for $0. Raw runs go to `data/validation_runs/`, and the paid report to `docs/validation_results.md`.
-- Stub run 2026-09-22: Q7 (a whole-document structure question) scored 0.254 and was declined
-  at gate 1. **Fixed (user chose the recommended option):** gate 1 also passes a question that names a corpus
-  document (枠 + doc type): `named_documents()` in `rag/documents.py`. The `gate1` event has
-  `via` + `named_docs`. `test_gates.py` gained case 8 (8/8), and `test_api.py` still passes 10/10.
-- Also: Q1 as phrased in the suite (…要件は何ですか？) tops at 0.596, vs 0.8907 for the short form.
-- **Q6: the user asked to validate both rules.** Free analysis is in `docs/validation_questions.md` Q6
-  (取消し article identical in 4 交付規程, different in 複数者連携, which is not retrieved). The runner
-  grades rule A and rule B on every run. Rule B's prompt line is behind `CITE_SHARED_RULES=1`
-  (`--shared-rules`), off by default. Paid plan, pending confirmation: Q6 default + Q6 rule B, then
-  Q2/Q3 under rule B to see whether the line makes the model mix 枠 figures.
-- **PAID RUN 2026-09-22: 8/10, $0.1794** (ledger $0.2336). Report: `docs/validation_results.md`, raw:
-  `data/validation_runs/20260922-224505_paid.json`. **Every answered run used 2 requests** (strict output confirmed).
-  Q7 passed via the named-document gate ($0.0616). Q9/Q10 declined in 1 request.
-  - Q3 FAIL `unverified_quote`: the answer was right, but the model stitched table cells into a quote
-    (「補助額 ５万円～… 補助額 １５０万円～…」), which does not exist in the markdown table. The gate did its
-    job; the fix belongs in the prompt (copy one table row verbatim) and/or a table-aware quote check.
-  - Q6 FAIL `no_citation`: answerable=true with 0 citations (1,398 out tokens). The cause was not visible
-    because declined drafts weren't kept. **Now kept:** `QueryResult.draft` (in run files, never shown to users).
-  - Still to run (approved plan): Q6 under rule B, then Q2/Q3 under rule B (~$0.11).
-- Afterwards: count uncited sentences (target 0); record in MANUAL.md + web mirror.
+**6. Wrap up validation ($0).** Count uncited sentences in the answered responses (target 0; see the
+`- [ ]` lines in the report). Gate 1 recheck: the lowest must-pass score is 0.254 (Q7, which passes via named doc),
+the highest must-stop is 0.000, so 0.3 holds. Record in MANUAL.md + the web mirror (rev 47 → new).
 
-**Dashboard contract** — `docs/dashboard_build_brief.md` §2 was synced to the code on 2026-09-22
-(field names, event order, request/status shapes). Preview fixture `answered-mock.sse` had
-blank lines inside events (every event was parsed as an unnamed `message`), and is now fixed.
-
-**7. Round-1 demo: Vercel UI + this PC via tunnel ($0 infra)**
-- **DONE 2026-09-22:** pushed with the user's go-ahead (`bac3fc7` .gitignore, `5dd084e` code, after a secret scan).
-  Preview route had already been deleted.
-- **DONE:** same-origin proxy `web/app/rag/api/[...path]/route.ts` (health/status/query only)
-  → `RAG_API_URL`; `page.tsx` passes `apiUrl="/rag"`. No CORS change or `NEXT_PUBLIC_API_URL`
-  needed. The proxy also sends `ngrok-skip-browser-warning` (ngrok's warning page).
-- **DONE:** Vercel project `web-gen-ai-teleapo/datarag` linked from `web/` (`.vercel/` gitignored).
-- **LIVE 2026-09-22: https://datarag-rho.vercel.app** (CLI deploy from `web/`). Env (production): `NEON_AUTH_BASE_URL`,
-  a new `NEON_AUTH_COOKIE_SECRET` (sensitive, not the local one), and `RAG_API_URL=https://bonsai-halogen-reprocess.ngrok-free.dev`
-  (ngrok's free static dev domain; the same on every `ngrok http 8000`). Neon Auth trusted domain added.
-  Smoke: sign-in 200 · `/` 307 · `/rag/api/health` 200 via tunnel · status 401 without a token · unknown 404.
-- To serve: this PC runs uvicorn (:8000) + `ngrok http 8000`. The site is down when either is.
-- Vercel build fixes: `web/package-lock.json` re-synced (npm ci rejected it). Figtree moved to
-  `next/font/local` (`web/app/fonts/Figtree-latin.woff2`): on Vercel, Turbopack failed on the
-  next/font/google Figtree URLs ("queries have exactly one entry"), and only for that font.
-- Git auto-deploy: connect the repo in Vercel with root directory `web`.
-
-**8. Round 2: all on Vercel (option A)**
-Replace local bge with Voyage's rerank API; recalibrate the threshold and re-run
-both free test scripts; move the spend ledger to a Neon table (serverless filesystem
-is ephemeral); FastAPI as a Vercel Python function. Check the Voyage free allowance
-covers rerank models, and that 3 RPM holds (embed + rerank = 2 requests per query).
+**7. Deployment follow-ups.**
+- Git auto-deploy: connect the repo in Vercel (Settings → Git, root directory `web`). Until then, run `vercel deploy --prod --yes` from `web/`.
+- **Stop the local `next start` before any local `npm run build`**: rebuilding under a running server gave ChunkLoadError 500s.
+  The site is now on Vercel, so local `next start` isn't needed.
+- Close open sign-up once the admin exists: Neon Console → Auth → disable sign-up, then hide the 「新規登録」 link.
+- Round 2 (all on Vercel): Voyage rerank API instead of local bge, recalibrate the threshold, move the ledger to Neon,
+  FastAPI as a Vercel Python function. Check that the Voyage free tier covers rerank and that 3 RPM holds.
 
 ### Open decisions / housekeeping
 
-- `CLAUDE.md` cost table still says $0.011/query; measured ~$0.03 answered, ~$0.05
-  with a full document. It's the user's file — offer the update, don't make it silently.
-- Neon Auth sign-up is open (`disableSignUp: false`). Harmless (API requires role=admin);
-  could be closed in the Neon console.
+- `CLAUDE.md` cost table still says $0.011/query; measured ~$0.013–0.024 answered (2 requests), ~$0.06
+  with a full document. The user said "no need to update now" (2026-09-22).
 - Password-reset links need custom SMTP (not configured).
 - At project end: `neon api-keys revoke 3349370` (account-wide key minted by `neon mcp`).
+
+---
+
+## Session 2026-09-22 — fixes, validation run 1, GitHub + Vercel
+
+**Spend: $0.0542 → $0.2336** (validation run 1, $0.1794).
+
+- **Third request explained and fixed:** the output tool was non-strict, so a malformed `final_result` cost a retry. Now
+  `ToolOutput(Answer, strict=True)`; `count_tokens` accepted it for free. The ledger gets a per-request `trace`. Run 1: every answer
+  took 2 requests.
+- **`scripts/run_validation.py`:** stub by default, `--paid` (estimate only), `--paid --yes`, `--only`, `--regrade`,
+  `--shared-rules`. Grades status/path/contain/cite/must-not, tool findings, >2 requests, figures missing from quotes,
+  and Q6 rules A/B.
+- **Gate 1 named-document pass** (user chose the recommendation): `named_documents()` in `rag/documents.py`; the `gate1` event
+  gains `via` and `named_docs`. Only Q7 in the suite is affected. `test_gates.py` case 8.
+- **Q6 analysis** (free): see open issue 5. The rule-B prompt line is behind `CITE_SHARED_RULES`.
+- **Dashboard contract** §2 synced to the code. The preview fixture had blank lines inside SSE events (fixed); the preview
+  route was later deleted by the design side.
+- **Sign-in page** gained registration mode (`web/app/auth/sign-in/page.tsx`).
+- **GitHub:** first real push (`bac3fc7` .gitignore, `5dd084e` code), after a secret scan; later commits for the proxy,
+  lock file, font, and results.
+- **Vercel:** proxy `web/app/rag/api/[...path]/route.ts` (health/status/query only, bearer passthrough,
+  `ngrok-skip-browser-warning`, `maxDuration` 300). `page.tsx` passes `apiUrl="/rag"`. Env: `NEON_AUTH_BASE_URL`, a new
+  sensitive `NEON_AUTH_COOKIE_SECRET`, `RAG_API_URL`. Build fixes: re-synced `web/package-lock.json`; Figtree via
+  `next/font/local` (on Vercel's Turbopack, the next/font/google Figtree URLs failed with "queries have exactly one entry").
+- Gotchas: the Bash heredoc mangles `\r\n`, so use Write/Edit for backslashes. Python `write_text` on Windows writes CRLF
+  (the repo files are CRLF already).
 
 ---
 
