@@ -76,6 +76,15 @@ next paid run proves it: an answered run should show 2 requests.
   grades rule A and rule B on every run. Rule B's prompt line is behind `CITE_SHARED_RULES=1`
   (`--shared-rules`), off by default. Paid plan, pending confirmation: Q6 default + Q6 rule B, then
   Q2/Q3 under rule B to see whether the line makes the model mix 枠 figures.
+- **PAID RUN 2026-09-22: 8/10, $0.1794** (ledger $0.2336). Report: `docs/validation_results.md`, raw:
+  `data/validation_runs/20260922-224505_paid.json`. **Every answered run used 2 requests** (strict output confirmed).
+  Q7 passed via the named-document gate ($0.0616). Q9/Q10 declined in 1 request.
+  - Q3 FAIL `unverified_quote`: the answer was right, but the model stitched table cells into a quote
+    (「補助額 ５万円～… 補助額 １５０万円～…」), which does not exist in the markdown table. The gate did its
+    job; the fix belongs in the prompt (copy one table row verbatim) and/or a table-aware quote check.
+  - Q6 FAIL `no_citation`: answerable=true with 0 citations (1,398 out tokens). The cause was not visible
+    because declined drafts weren't kept. **Now kept:** `QueryResult.draft` (in run files, never shown to users).
+  - Still to run (approved plan): Q6 under rule B, then Q2/Q3 under rule B (~$0.11).
 - Afterwards: count uncited sentences (target 0); record in MANUAL.md + web mirror.
 
 **Dashboard contract** — `docs/dashboard_build_brief.md` §2 was synced to the code on 2026-09-22

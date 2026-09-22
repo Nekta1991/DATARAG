@@ -1,0 +1,362 @@
+{
+ "mode": "paid",
+ "model": "claude-sonnet-5",
+ "threshold": 0.3,
+ "shared_rules": false,
+ "rows": [
+  {
+   "question": "北海道内で事業を実施する場合の要件は何ですか？",
+   "status": "answered",
+   "reason": "answered",
+   "answer": "スマート農業・農業支援サービス事業「広域型（スマート技術体系転換加速化支援）」において、通常は「複数の都道府県にわたり事業を実施する事業実施主体」が対象ですが、北海道内で取り組む場合には、「北海道内の複数総合振興局・振興局で事業を実施する事業実施主体」であることが要件となります。これに加え、応募者・応募内容に関する他の共通要件（実施能力、国内事務所所在、法人・団体の組織規約、経理管理体制、暴力団排除要件、技術課題解決に向けた取組・成果目標・面積要件の充足、環境負荷低減チェックシートの実施など）も満たす必要があります。",
+   "citations": [
+    {
+     "source_doc": "スマート農業・農業支援サービス事業 広域型（スマート技術体系転換加速化支援） 公募要領",
+     "quote": "複数の都道府県にわたり事業を実施する事業実施主体（北海道内で取り組む場合にあって は、北海道内の複数総合振興局・振興局で事業を実施する事業実施主体）が"
+    }
+   ],
+   "tool_calls": [
+    "search_knowledge_base('北海道内で事業を実施する場合の要件')"
+   ],
+   "top_score": 0.5955164432525635,
+   "usage": {
+    "requests": 2,
+    "input_tokens": 8120,
+    "output_tokens": 508,
+    "cache_write_tokens": 5506,
+    "cache_read_tokens": 2590,
+    "details": {
+     "input_tokens": 24,
+     "output_tokens": 508,
+     "cache_creation_input_tokens": 5506,
+     "cache_read_input_tokens": 2590
+    }
+   },
+   "cost_usd": 0.019411,
+   "rejected_quotes": [],
+   "trace": [
+    "search_knowledge_base",
+    "final_result"
+   ],
+   "id": 1,
+   "seconds": 44.6
+  },
+  {
+   "question": "複数者連携デジタル化・AI導入枠の補助率と補助上限額を教えてください。",
+   "status": "answered",
+   "reason": "answered",
+   "answer": "複数者連携デジタル化・AI導入枠では、経費区分ごとに以下の通りです。\n（1）基盤導入経費：インボイス対応類型の対象経費と同様の補助率・上限額。\n（2）消費動向等分析経費：補助率2/3以内、補助上限額は50万円×グループ構成員数。\n※（1）＋（2）の補助上限額は3,000万円。\n（3）その他経費（事務費・専門家費等）：補助率2/3以内、補助上限額は（（1）＋（2）の額）×10パーセントに補助率2/3を乗じた額、若しくは200万円のいずれか低い方。",
+   "citations": [
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 複数者連携デジタル化・AI導入枠 公募要領",
+     "quote": "（１）基盤導入経費 ⇒インボイス対応類型の対象経費と 同様 （２）消費動向等分析経費 ⇒補助上限額は５０万円×グループ 構成員数、補助率は２／３以内"
+    },
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 複数者連携デジタル化・AI導入枠 公募要領",
+     "quote": "（（１）＋（２）の補助上限額は３，０００ 万円） （３）その他経費（事務費・専門家費 等） ⇒補助率は２／３以内、補助上限額 は（（１）＋（２））×１０パーセントに補"
+    },
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 複数者連携デジタル化・AI導入枠 公募要領",
+     "quote": "助率２／３を乗じた額若しくは２００万 円のいずれか低い方"
+    }
+   ],
+   "tool_calls": [
+    "search_knowledge_base('複数者連携デジタル化・AI導入枠 補助率 補助上限額')"
+   ],
+   "top_score": 0.9991254210472107,
+   "usage": {
+    "requests": 2,
+    "input_tokens": 9754,
+    "output_tokens": 719,
+    "cache_write_tokens": 4743,
+    "cache_read_tokens": 4987,
+    "details": {
+     "input_tokens": 24,
+     "output_tokens": 719,
+     "cache_creation_input_tokens": 4743,
+     "cache_read_input_tokens": 4987
+    }
+   },
+   "cost_usd": 0.020093,
+   "rejected_quotes": [],
+   "trace": [
+    "search_knowledge_base",
+    "final_result"
+   ],
+   "id": 2,
+   "seconds": 39.0
+  },
+  {
+   "question": "通常枠の補助額と補助率はいくらですか？",
+   "status": "declined",
+   "reason": "unverified_quote",
+   "answer": "この情報からは判断できません",
+   "citations": [],
+   "tool_calls": [
+    "search_knowledge_base('通常枠 補助額 補助率')"
+   ],
+   "top_score": 0.9798157215118408,
+   "usage": {
+    "requests": 2,
+    "input_tokens": 9538,
+    "output_tokens": 535,
+    "cache_write_tokens": 4541,
+    "cache_read_tokens": 4973,
+    "details": {
+     "input_tokens": 24,
+     "output_tokens": 535,
+     "cache_creation_input_tokens": 4541,
+     "cache_read_input_tokens": 4973
+    }
+   },
+   "cost_usd": 0.017745,
+   "rejected_quotes": [
+    "補助額 ５万円～１５０万円未満 補助額 １５０万円～４５０万円以下",
+    "補助率 １／２以内 ※令和６年１０月から令和７年９月までの間で、「当該期間における地 域別最低賃金以上～令和７年度改定の地域別最低賃金未満」で雇用 している従業員が全従業員の３０％以上である月が３か月以上ある場 合は、２／３以内"
+   ],
+   "trace": [
+    "search_knowledge_base",
+    "final_result"
+   ],
+   "id": 3,
+   "seconds": 55.5
+  },
+  {
+   "question": "小規模事業者がセキュリティ対策推進枠を利用する場合の補助率はいくらですか？",
+   "status": "answered",
+   "reason": "answered",
+   "answer": "セキュリティ対策推進枠において、小規模事業者の補助率は2／3以内です（中小企業は1／2以内）。",
+   "citations": [
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 セキュリティ対策推進枠 交付規程",
+     "quote": "補助率　　| １／２以内 ※小規模事業者は２／３以内"
+    }
+   ],
+   "tool_calls": [
+    "search_knowledge_base('セキュリティ対策推進枠 補助率 小規模事業者')"
+   ],
+   "top_score": 0.9949486255645752,
+   "usage": {
+    "requests": 2,
+    "input_tokens": 8830,
+    "output_tokens": 265,
+    "cache_write_tokens": 3816,
+    "cache_read_tokens": 4990,
+    "details": {
+     "input_tokens": 24,
+     "output_tokens": 265,
+     "cache_creation_input_tokens": 3816,
+     "cache_read_input_tokens": 4990
+    }
+   },
+   "cost_usd": 0.013236,
+   "rejected_quotes": [],
+   "trace": [
+    "search_knowledge_base",
+    "final_result"
+   ],
+   "id": 4,
+   "seconds": 36.6
+  },
+  {
+   "question": "スマート農業の補助事業とデジタル化・AI導入補助金を併用して、同じ機械の購入費を両方に申請できますか？",
+   "status": "answered",
+   "reason": "answered",
+   "answer": "できません。同一の機械購入費について、スマート農業・農業支援サービス事業とデジタル化・AI導入補助金2026の双方から重複して補助を受けることは認められていません。\n\n・スマート農業・農業支援サービス事業側では「重複申請の制限」として、応募者が同一の内容で既に国から他の補助金の交付を受けている場合や採択が決定している場合は、審査対象から除外するか採択決定を取り消すこととされています。国からの他の補助金の採択結果が未確定の段階での申請自体は差し支えありませんが、他方の採択結果次第で本事業側が除外・取消される可能性があります。\n・デジタル化・AI導入補助金2026（交付規程、通常枠）では、「国及び中小機構その他の独立行政法人の他の補助金等と重複する事業については、補助事業の対象として認めないものとする」と明記されており、交付規程は公募要領より優先されます。\n\nしたがって、同じ機械の購入費用を両制度に重複して申請・受給することはできません。",
+   "citations": [
+    {
+     "source_doc": "スマート農業・農業支援サービス事業 別記1（スマート農業技術と産地の橋渡し支援） 公募要領",
+     "quote": "応募者が、同一の内容で、既に自力で事業を実施している場合又は既に国から他の補助金の 交付を受けている場合若しくは採択が決定している場合は、審査の対象から除外し、又は採択 の決定を取り消すこととします。"
+    },
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 通常枠 交付規程",
+     "quote": "国及び中小機構その他の独立行政法人の他の補助金等と重複する事業については、 補助事業の対象として認めないものとする。"
+    }
+   ],
+   "tool_calls": [
+    "search_knowledge_base('スマート農業 他事業との重複受給 禁止')",
+    "search_knowledge_base('他の補助金との重複 併用 二重申請 禁止')"
+   ],
+   "top_score": 0.7573416233062744,
+   "usage": {
+    "requests": 2,
+    "input_tokens": 9490,
+    "output_tokens": 791,
+    "cache_write_tokens": 4464,
+    "cache_read_tokens": 5002,
+    "details": {
+     "input_tokens": 24,
+     "output_tokens": 791,
+     "cache_creation_input_tokens": 4464,
+     "cache_read_input_tokens": 5002
+    }
+   },
+   "cost_usd": 0.020118,
+   "rejected_quotes": [],
+   "trace": [
+    "search_knowledge_base + search_knowledge_base",
+    "final_result"
+   ],
+   "id": 5,
+   "seconds": 87.8
+  },
+  {
+   "question": "補助金の交付決定が取り消されるのはどのような場合ですか？",
+   "status": "declined",
+   "reason": "no_citation",
+   "answer": "この情報からは判断できません",
+   "citations": [],
+   "tool_calls": [
+    "search_knowledge_base('交付決定の取消し 事由')"
+   ],
+   "top_score": 0.996340811252594,
+   "usage": {
+    "requests": 2,
+    "input_tokens": 8516,
+    "output_tokens": 1398,
+    "cache_write_tokens": 3513,
+    "cache_read_tokens": 4979,
+    "details": {
+     "input_tokens": 24,
+     "output_tokens": 1398,
+     "cache_creation_input_tokens": 3513,
+     "cache_read_input_tokens": 4979
+    }
+   },
+   "cost_usd": 0.023806,
+   "rejected_quotes": [],
+   "trace": [
+    "search_knowledge_base",
+    "final_result"
+   ],
+   "id": 6,
+   "seconds": 26.1
+  },
+  {
+   "question": "通常枠の交付規程は全体としてどのような構成（どのような条項の流れ）になっていますか？",
+   "status": "answered",
+   "reason": "answered",
+   "answer": "通常枠の交付規程は、以下のような条項の流れで構成されています。\n\n1. 総則的事項：第1条（通則）、第2条（定義）、第3条（交付の目的）\n2. 事務局・IT導入支援事業者・ITツールの体制整備：第4条（事務局の設置）、第5条（IT導入支援事業者の登録）、第6条（ITツールの登録）、第7条（IT導入支援事業者の業務）、第8条（登録取消）\n3. 補助対象者・対象経費：第9条（補助金の交付対象者）、第10条（補助対象としない事業）、第11条（補助額・補助率・補助対象経費）、第12条（補助対象の範囲）、第13条（補助事業の実施期間）\n4. 申請から交付決定までの手続：第14条（交付申請）、第15条（申請方法）、第16条（交付決定の通知）、第17条（申請の取下げ及び交付後の辞退）\n5. 事業実施中の管理事項：第18条（補助事業の経理等）、第19条（計画変更等の承認）、第20条（債権譲渡の禁止）、第21条（遅延の報告）、第22条（事故の報告）\n6. 完了後の手続：第23条（実績報告）、第24条（補助金の額の確定）、第25条（補助金の交付）、第26条（事業実施効果の報告）\n7. 違反・不正時の措置：第27条（交付決定の取消し）、第28条（補助金の返還）、第29条（加算金）、第30条（延滞金）\n8. 取得財産の管理・監督：第31条（財産の管理及び処分）、第32条（立入調査）、第33条（是正のための措置等）\n9. 情報管理・誓約・その他：第34条（情報管理及び秘密保持）、第35条（反社会的勢力排除に関する誓約）、第36条（その他）\n10. 附則、別表（補助額・補助率・補助対象経費）、別紙1（中小企業等・小規模事業者等の定義）、別紙2（反社会的勢力排除に関する誓約事項）、様式集（交付決定通知書、確定通知書、取得財産等管理台帳）\n\n全体として、①目的・定義など総則→②事業体制（事務局・支援事業者・ツール登録）→③補助対象者・経費の要件→④交付申請から決定までの手続→⑤実施中の管理→⑥完了後の報告・確定→⑦違反時の取消・返還等の制裁措置→⑧財産管理・監督→⑨情報管理・誓約等その他規定、という順序で流れる構成になっています。",
+   "citations": [
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 通常枠 交付規程",
+     "quote": "第１条 中小企業デジタル化・ＡＩ導入支援事業費補助金（以下「補助金」という。）の交付について は、補助金等に係る予算の執行の適正化に関する法律"
+    },
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 通常枠 交付規程",
+     "quote": "第９条 本事業の補助金の交付対象者は、次の全ての要件に該当する者とする。"
+    },
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 通常枠 交付規程",
+     "quote": "第１６条 事務局は、第１４条の規定に基づく交付申請があったときは、その内容を審査し、補助 金を交付すべきものと認めたときは"
+    },
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 通常枠 交付規程",
+     "quote": "第２７条 事務局は、補助事業者が次の各号のいずれかに該当するときは、第１６条第１項の規定 に基づく交付決定の全部又は一部を取り消すことができる。"
+    },
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 通常枠 交付規程",
+     "quote": "第３６条 事務局は、本規程に定める事項のほか、補助事業の円滑かつ適正な運営を行うために 必要な事項について別途定める。"
+    }
+   ],
+   "tool_calls": [
+    "retrieve_full_document('09_dx_ai_kitei_tsujyo')"
+   ],
+   "top_score": 0.25432267785072327,
+   "usage": {
+    "requests": 2,
+    "input_tokens": 23202,
+    "output_tokens": 1507,
+    "cache_write_tokens": 18188,
+    "cache_read_tokens": 4990,
+    "details": {
+     "input_tokens": 24,
+     "output_tokens": 1507,
+     "cache_creation_input_tokens": 18188,
+     "cache_read_input_tokens": 4990
+    }
+   },
+   "cost_usd": 0.061586,
+   "rejected_quotes": [],
+   "trace": [
+    "retrieve_full_document",
+    "final_result"
+   ],
+   "id": 7,
+   "seconds": 48.9
+  },
+  {
+   "question": "明日の東京の天気を教えてください。",
+   "status": "declined",
+   "reason": "score_gate",
+   "answer": "この情報からは判断できません",
+   "citations": [],
+   "tool_calls": [],
+   "top_score": 2.3576145395054482e-05,
+   "usage": {},
+   "cost_usd": 0.0,
+   "rejected_quotes": [],
+   "trace": [],
+   "id": 8,
+   "seconds": 3.8
+  },
+  {
+   "question": "ものづくり補助金の補助上限額はいくらですか？",
+   "status": "declined",
+   "reason": "not_answerable",
+   "answer": "この情報からは判断できません",
+   "citations": [],
+   "tool_calls": [],
+   "top_score": 0.5618355870246887,
+   "usage": {
+    "requests": 1,
+    "input_tokens": 2601,
+    "output_tokens": 69,
+    "cache_write_tokens": 203,
+    "cache_read_tokens": 2386,
+    "details": {
+     "input_tokens": 12,
+     "output_tokens": 69,
+     "cache_creation_input_tokens": 203,
+     "cache_read_input_tokens": 2386
+    }
+   },
+   "cost_usd": 0.001699,
+   "rejected_quotes": [],
+   "trace": [
+    "final_result"
+   ],
+   "id": 9,
+   "seconds": 6.5
+  },
+  {
+   "question": "2027年度のデジタル化・AI導入補助金の公募スケジュールはいつですか？",
+   "status": "declined",
+   "reason": "not_answerable",
+   "answer": "この情報からは判断できません",
+   "citations": [],
+   "tool_calls": [],
+   "top_score": 0.5068973898887634,
+   "usage": {
+    "requests": 1,
+    "input_tokens": 2612,
+    "output_tokens": 70,
+    "cache_write_tokens": 214,
+    "cache_read_tokens": 2386,
+    "details": {
+     "input_tokens": 12,
+     "output_tokens": 70,
+     "cache_creation_input_tokens": 214,
+     "cache_read_input_tokens": 2386
+    }
+   },
+   "cost_usd": 0.001736,
+   "rejected_quotes": [],
+   "trace": [
+    "final_result"
+   ],
+   "id": 10,
+   "seconds": 69.5
+  }
+ ]
+}

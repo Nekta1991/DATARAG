@@ -124,6 +124,10 @@ class QueryResult:
     cost_usd: float
     rejected_quotes: list[str] = field(default_factory=list)
     trace: list[str] = field(default_factory=list)  # per model request, see request_trace
+    # What the model returned when gate 2 declined it. Never shown to users
+    # (the decline is final); kept so a paid decline can be diagnosed from the
+    # run file instead of paying to reproduce it.
+    draft: dict | None = None
 
 
 # -- tools ------------------------------------------------------------------
@@ -423,7 +427,8 @@ def answer_question(question: str, model=None, emit=None) -> QueryResult:
     ok = reason == "answered"
     r = QueryResult(question, "answered" if ok else "declined", reason,
                     out.answer if ok else DECLINE, out.citations if ok else [],
-                    deps.tool_calls, top, usage, cost, bad, trace)
+                    deps.tool_calls, top, usage, cost, bad, trace,
+                    None if ok else out.model_dump())
     if paid:
         _record(r, MODEL)
     return _finish(deps, r)
