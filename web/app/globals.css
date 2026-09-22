@@ -1,0 +1,136 @@
+/* Organic design system (Claude Design, exported 2026-09-22): tokens copied
+   verbatim from its styles.css; component classes adapted from the
+   "DATARAG Console" canvas. Fonts come from next/font in layout.tsx. */
+:root {
+  --color-bg: #f5ead8;
+  --color-surface: #ebddc5;
+  --color-text: #201e1d;
+  --color-accent: #c67139;
+  --color-accent-2: #7a8a5e;
+  --color-divider: color-mix(in srgb, #201e1d 16%, transparent);
+
+  --color-neutral-100: #f9f4ed;
+  --color-neutral-200: #eee7db;
+  --color-neutral-300: #dcd3c4;
+  --color-neutral-400: #c0b6a5;
+  --color-neutral-600: #82796a;
+  --color-neutral-700: #645c50;
+  --color-neutral-800: #474238;
+  --color-neutral-900: #2e2b25;
+
+  --color-accent-100: #fff2eb;
+  --color-accent-200: #ffe1d0;
+  --color-accent-300: #ffc6a5;
+  --color-accent-600: #b2622d;
+  --color-accent-700: #8c491a;
+  --color-accent-800: #643312;
+
+  --color-accent-2-200: #e1eecc;
+  --color-accent-2-600: #728157;
+  --color-accent-2-800: #3d472b;
+
+  /* Semantic red for DECLINED / ERROR — never the terracotta accent. */
+  --red-100: #fdeaea;
+  --red-500: #c04a48;
+  --red-800: #7a2321;
+
+  /* Console: Organic's darkest neutral; tones checked at 4.5:1 on --con-bg. */
+  --con-bg: #2e2b25;
+  --con-line: rgba(220, 211, 196, .14);
+  --con-msg: #dcd3c4;
+  --t-info: #eee7db;
+  --t-pass: #aebf92;
+  --t-fail: #ef8a8a;
+  --t-agent: #f6a06b;
+  --t-cost: #c0b6a5;
+
+  --font-heading: var(--nf-caprasimo), system-ui, sans-serif;
+  --font-body: var(--nf-figtree), var(--nf-noto), system-ui, sans-serif;
+  --jp-head: var(--nf-zenmaru), var(--nf-noto), sans-serif;
+  --jp-body: var(--nf-noto), var(--nf-figtree), sans-serif;
+  --mono: var(--nf-plex), ui-monospace, monospace;
+
+  --space-2: 8.8px;
+  --space-3: 13.2px;
+  --space-4: 17.6px;
+  --space-6: 26.4px;
+  --radius-md: 16px;
+  --radius-lg: 28px;
+  --radius-card: calc(var(--radius-lg) * 1.15);
+
+  --shadow-md: 0 3px 10px color-mix(in srgb, #2e2b25 16%, transparent);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--jp-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, textarea { font: inherit; color: inherit; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+.mono { font-family: var(--mono); }
+.jph { font-family: var(--jp-head); font-weight: 700; }
+
+/* card + section heading with the short accent rule */
+.card {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-6);
+  border-radius: var(--radius-card); background: var(--color-surface);
+}
+.ct { margin: 0; font-family: var(--jp-head); font-weight: 700; font-size: 19px; line-height: 1.12; }
+.ct-rule { width: 44px; height: 4px; border-radius: 999px; background: var(--color-accent); margin-top: -2px; }
+.ct-rule.sage { background: var(--color-accent-2); }
+
+/* buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; font-family: var(--jp-head); font-weight: 700; font-size: 14px; line-height: 1.2;
+  background: transparent; border: 1px solid transparent; border-radius: 999px;
+  padding: 9px 22px; white-space: nowrap;
+}
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary { background: var(--color-accent); color: var(--color-bg); }
+.btn-primary:not(:disabled):hover { background: var(--color-accent-600); }
+.btn-primary:not(:disabled):active { background: var(--color-accent-700); }
+.btn-secondary { border-color: var(--color-divider); font-size: 13px; padding: 6px 16px; }
+.btn-secondary:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.btn-secondary:active { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+
+/* small labels */
+.tag { display: inline-flex; align-items: center; font-size: 11px; letter-spacing: .02em; padding: 3px 10px; border-radius: 999px; }
+.tag-accent { background: var(--color-accent-100); color: var(--color-accent-800); }
+.chip { font-family: var(--mono); font-size: 11px; padding: 5px 10px; border-radius: 999px; background: var(--color-surface); color: var(--color-neutral-800); white-space: nowrap; }
+.badge { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: .06em; padding: 5px 13px; border-radius: 999px; }
+.badge.ok { background: var(--color-accent-2-200); color: var(--color-accent-2-800); }
+.badge.no { background: var(--red-100); color: var(--red-800); }
+
+/* text field */
+.field {
+  width: 100%; min-height: 44px; padding: 8px 16px; font-size: 15px;
+  background: var(--color-neutral-100); border: 1px solid var(--color-divider); border-radius: 999px;
+  caret-color: var(--color-accent);
+}
+.field:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.field:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+
+/* red notice: budget guard, API error, sign-in error */
+.blocked {
+  display: flex; align-items: flex-start; gap: 8px; margin: 0;
+  font-size: 12.5px; line-height: 1.45; color: var(--red-800); background: var(--red-100);
+  border-radius: var(--radius-md); padding: 9px 13px;
+}
+.blocked svg { flex: none; margin-top: 2px; width: 15px; height: 15px; }
+
+/* placeholder text, e.g. an unknown value */
+.ph { font-family: var(--mono); font-size: 13px; background: var(--color-neutral-200); border-radius: 6px; padding: 1px 6px; color: var(--color-neutral-700); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; }
+}

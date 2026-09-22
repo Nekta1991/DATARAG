@@ -1,0 +1,58 @@
+{
+ "mode": "stub",
+ "model": "stub",
+ "threshold": 0.3,
+ "shared_rules": false,
+ "rows": [
+  {
+   "question": "補助金の交付決定が取り消されるのはどのような場合ですか？",
+   "status": "answered",
+   "reason": "answered",
+   "answer": "（スタブ回答）（交付決定の取消し）\n第２７条 事務局は、補助事業者が次の各号のいずれかに該当するときは、第１６条第１項の規定 に基づく",
+   "citations": [
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 通常枠 交付規程",
+     "quote": "（交付決定の取消し）\n第２７条 事務局は、補助事業者が次の各号のいずれかに該当す"
+    }
+   ],
+   "tool_calls": [
+    "search_knowledge_base('補助金の交付決定が取り消されるのはどのような場合ですか？')"
+   ],
+   "top_score": 0.996340811252594,
+   "usage": {},
+   "cost_usd": 0.0,
+   "rejected_quotes": [],
+   "trace": [
+    "search_knowledge_base",
+    "final_result"
+   ],
+   "id": 6,
+   "seconds": 19.2
+  },
+  {
+   "question": "通常枠の交付規程は全体としてどのような構成（どのような条項の流れ）になっていますか？",
+   "status": "answered",
+   "reason": "answered",
+   "answer": "（スタブ回答）（１） 交付申請の流れ\n交付申請の基本的な流れは以下のとおり（このうち、申請者（中小企業・小規模事業者等）が行うアクショ",
+   "citations": [
+    {
+     "source_doc": "デジタル化・AI導入補助金2026 セキュリティ対策推進枠 公募要領",
+     "quote": "（１） 交付申請の流れ\n交付申請の基本的な流れは以下のとおり（このうち、申請者（"
+    }
+   ],
+   "tool_calls": [
+    "search_knowledge_base('通常枠の交付規程は全体としてどのような構成（どのような条項の流れ）になっていますか？')"
+   ],
+   "top_score": 0.25432267785072327,
+   "usage": {},
+   "cost_usd": 0.0,
+   "rejected_quotes": [],
+   "trace": [
+    "search_knowledge_base",
+    "final_result"
+   ],
+   "id": 7,
+   "seconds": 3.7
+  }
+ ]
+}

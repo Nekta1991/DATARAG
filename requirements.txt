@@ -1,0 +1,51 @@
+# DATARAG — direct dependencies (Python 3.14 / cp314, Windows)
+#
+# torch and torchvision are pinned to CUDA 13.0 builds, which are NOT on PyPI.
+# The extra index below is required; without it pip resolves to the CPU wheels
+# and the layout/reranker models fall back to CPU.
+#
+#     pip install -r requirements.txt
+#
+# CPU-only machine? Drop the +cu130 local versions and the --extra-index-url
+# line, leaving plain `torch` / `torchvision`.
+#
+# GPU note: the CUDA index is chosen by GPU architecture, not preference.
+# An RTX 50-series card is Blackwell / sm_120, which needs CUDA >= 12.8.
+# At time of writing cu130 was the only index carrying cp314 wheels for
+# torch 2.14 AND sm_120 support (cu129 stops at 2.9.0, cu128 at 2.11.0,
+# and cu126 predates Blackwell). Check your own card before copying this.
+#
+# torch and torchvision must come from the SAME index. A cu130 torch with a
+# PyPI (CPU) torchvision imports fine and then fails at runtime with
+# "Could not run 'torchvision::nms' with arguments from the 'CUDA' backend".
+
+--extra-index-url https://download.pytorch.org/whl/cu130
+
+# ── ingestion ───────────────────────────────────────────────────────────────
+docling==2.129.0
+pymupdf==1.28.2
+pdfplumber==0.11.10
+
+# ── embeddings ──────────────────────────────────────────────────────────────
+voyageai==0.5.0
+
+# ── reranking (local cross-encoder) ─────────────────────────────────────────
+sentence-transformers==6.1.0
+transformers==5.17.0
+torch==2.14.0+cu130
+torchvision==0.29.0+cu130
+
+# ── vector store ────────────────────────────────────────────────────────────
+psycopg[binary]==3.3.6
+
+# ── agent + generation ──────────────────────────────────────────────────────
+pydantic-ai==2.46.0
+anthropic==1.7.0
+
+# ── serving ─────────────────────────────────────────────────────────────────
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+
+# ── misc ────────────────────────────────────────────────────────────────────
+python-dotenv==1.2.3
+requests==2.34.2
