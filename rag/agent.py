@@ -55,7 +55,8 @@ from pydantic_ai.usage import UsageLimits
 from rag import config
 from rag import ledger
 from rag.documents import document_catalog, named_documents, retrieve_full_document
-from rag.retrieval import Hit, embed_query, hybrid_candidates, rerank, TOP_N
+from rag.retrieval import (Hit, embed_query, hybrid_candidates, rerank,
+                           reranker_name, TOP_N)
 
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 EFFORT = os.getenv("GENERATION_EFFORT", "low")
@@ -153,7 +154,7 @@ def _search(deps: Deps, query: str) -> list[Hit]:
     t = time.time()
     ranked = rerank(query, pool)
     deps.say("rerank.done", {
-        "model": os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"),
+        "model": reranker_name(),
         "pairs": len(pool), "ms": int((time.time() - t) * 1000),
         "top_score": round(ranked[0].rerank_score, 4) if ranked else 0.0,
         "candidates": [{"rank": i, "vector_rank": h.vector_rank, "lexical_rank": h.lexical_rank,

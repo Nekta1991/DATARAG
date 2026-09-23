@@ -40,6 +40,17 @@ VOYAGE_MODEL = os.getenv("VOYAGE_MODEL", "voyage-3.5")
 MIN_INTERVAL = float(os.getenv("VOYAGE_MIN_REQUEST_INTERVAL_SEC", "21"))
 MAX_RETRIES = int(os.getenv("VOYAGE_MAX_RETRIES", "6"))
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+# "local" = the bge cross-encoder on this machine's GPU. "voyage" = Voyage's
+# rerank API, which is what a serverless host can run: Vercel has no GPU, and
+# bge is 2.29 GB of weights plus torch.
+#
+# These are NOT interchangeable at the same threshold. Measured 2026-09-23
+# (scripts/compare_rerankers.py), bge scores an off-topic question 0.0000 while
+# Voyage scores the same question ~0.33 - Voyage's scale is compressed with a
+# high floor. Switching backend without moving RERANK_SCORE_THRESHOLD would
+# send off-topic questions to Claude as paid calls. See docs/rerank_comparison.md.
+RERANK_BACKEND = os.getenv("RERANK_BACKEND", "local")
+VOYAGE_RERANK_MODEL = os.getenv("VOYAGE_RERANK_MODEL", "rerank-2.5")
 TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "20"))
 LEXICAL_TOP_K = int(os.getenv("LEXICAL_TOP_K", "10"))
 TOP_N = int(os.getenv("RERANK_TOP_N", "5"))
@@ -219,14 +230,46 @@ def _reranker():
     )
 
 
-def rerank(query: str, hits: list[Hit]) -> list[Hit]:
-    if not hits:
-        return hits
+def _rerank_local(query: str, hits: list[Hit]) -> None:
     scores = _reranker().predict([(query, h.content) for h in hits],
                                  show_progress_bar=False)
     for h, s in zip(hits, scores):
         h.rerank_score = float(s)
+
+
+def _rerank_voyage(query: str, hits: list[Hit]) -> None:
+    """One API call for the whole candidate pool.
+
+    Size matters here: a ~25-chunk pool costs 8,600-9,300 tokens, and the
+    unpaid tier allows 10,000 tokens per minute. So one query very nearly
+    spends the whole minute, and the *token* ceiling binds long before the
+    3-requests-per-minute one. Retries are therefore not free - a failed
+    rerank cannot simply be tried again inside the same minute.
+    """
+    res = _voyage().rerank(query=query, documents=[h.content for h in hits],
+                           model=VOYAGE_RERANK_MODEL)
+    for r in res.results:
+        hits[r.index].rerank_score = float(r.relevance_score)
+    for h in hits:                      # defensive: the API returned every doc
+        if h.rerank_score is None:
+            h.rerank_score = 0.0
+
+
+def rerank(query: str, hits: list[Hit]) -> list[Hit]:
+    if not hits:
+        return hits
+    if RERANK_BACKEND == "voyage":
+        _rerank_voyage(query, hits)
+    elif RERANK_BACKEND == "local":
+        _rerank_local(query, hits)
+    else:
+        raise ValueError(f"RERANK_BACKEND must be 'local' or 'voyage', not {RERANK_BACKEND!r}")
     return sorted(hits, key=lambda h: h.rerank_score, reverse=True)
+
+
+def reranker_name() -> str:
+    """What actually scored this run, for the dashboard console and the ledger."""
+    return VOYAGE_RERANK_MODEL if RERANK_BACKEND == "voyage" else RERANKER_MODEL
 
 
 # -- the tool ---------------------------------------------------------------

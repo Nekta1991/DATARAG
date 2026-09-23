@@ -47,21 +47,34 @@ VOYAGE_RERANK_MODEL = "rerank-2.5"
 # 60-second window of both requests and tokens, and waits for whichever is short.
 TPM_LIMIT = 10_000
 RPM_LIMIT = 3
-# Measured on this corpus (MANUAL §5): Japanese runs ~1.2 chars per Voyage token.
-CHARS_PER_TOKEN = 1.2
+# Measured against Voyage's own reported totals on this corpus: the rerank
+# payload runs 1.28-1.77 chars per token (mean ~1.4), not the 1.2 the ingest
+# path measured for embeddings. 1.4 under-predicts nothing important here and
+# over-predicting only costs waiting.
+CHARS_PER_TOKEN = 1.4
 
 _window: list[tuple[float, int]] = []   # (timestamp, tokens charged)
 
 
 def _throttle(tokens: int) -> None:
-    """Block until a request of `tokens` fits inside both ceilings."""
+    """Block until a request of `tokens` fits inside both ceilings.
+
+    A request larger than TPM_LIMIT can never fit - one request cannot be
+    spread across minutes - so waiting for it would loop forever. Those are
+    let through against an empty window so the API's own answer is recorded
+    rather than guessed at; that is the measurement this script exists for.
+    """
     while True:
         now = time.time()
         _window[:] = [(t, n) for t, n in _window if now - t < 60]
         used = sum(n for _, n in _window)
         if len(_window) < RPM_LIMIT and used + tokens <= TPM_LIMIT:
             return
-        oldest = min(t for t, _ in _window)
+        if tokens > TPM_LIMIT and not _window:
+            print(f"      over-ceiling: this request alone needs ~{tokens} tokens "
+                  f"of a {TPM_LIMIT}/min budget - sending it to see what happens")
+            return
+        oldest = min(t for t, _ in _window) if _window else now
         wait = max(1.0, 61 - (now - oldest))
         print(f"      throttle: {len(_window)} req / {used} tok in window, "
               f"need {tokens} - waiting {wait:.0f}s")
