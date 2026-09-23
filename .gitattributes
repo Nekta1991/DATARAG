@@ -1,0 +1,5 @@
+# The vendored Voyage tokenizer is a data file, not source. Git's eol
+# conversion would rewrite its bytes on checkout for no reason; JSON survives
+# that, but the file is 6.7 MB and its checksum should not depend on the OS
+# it was cloned on.
+rag/assets/*.json -text
