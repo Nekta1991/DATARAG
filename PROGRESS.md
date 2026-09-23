@@ -17,9 +17,9 @@ what is waiting on the user, and the ordered steps with costs and done-criteria.
 | Agent | `rag/agent.py`, `claude-sonnet-5`, effort low, strict output tool (2 requests per answer, confirmed). Gate 1 = score ≥ 0.3 **or** the question names a corpus document; gate 2 = verbatim-quote check |
 | Neon Auth | enabled; **0 users**. The trusted domain `https://datarag-rho.vercel.app` is added, and localhost is allowed |
 | Git | `main` pushed to **public** `github.com/Nekta1991/DATARAG` (latest: validation run 1 + draft capture). Secret-scan before every push |
-| Tests (free) | `scripts/test_gates.py` 8/8, `scripts/test_api.py` 10/10 |
+| Tests (free) | `scripts/test_gates.py` **10/10**, `scripts/test_api.py` 10/10 (both re-run 2026-09-23) |
 | Validation | run 1 **8/10**, $0.1794: `docs/validation_results.md`, raw `data/validation_runs/20260922-224505_paid.json` |
-| Docs | `MANUAL.md` + web mirror https://claude.ai/artifact/J1U69gY5YUBYznPztFrYY2 (rev 47, **stale**: predates 2026-09-22), `docs/validation_questions.md`, `docs/dashboard_build_brief.md` (§2 event contract synced 2026-09-22) |
+| Docs | `MANUAL.md` **current to 2026-09-23** (Problem G, the 2026-09-22 decisions, open items). Web mirror https://claude.ai/artifact/J1U69gY5YUBYznPztFrYY2 is **rev 47, stale — it now trails MANUAL.md by two sessions**. `docs/validation_questions.md`, `docs/dashboard_build_brief.md` (§2 synced 2026-09-22) |
 | Frontend work | Claude Design is iterating on `web/app/dashboard.tsx` + CSS. **Don't edit those**; integrate through `page.tsx` / routes |
 
 ### Auto mode blocks these (the user approves each via `/permissions`)
@@ -91,9 +91,15 @@ Background ($0 analysis, in `docs/validation_questions.md` Q6): the 取消し ar
 fail a 「全ての枠」 claim. The user decides A or B after seeing the results. Each run overwrites
 `docs/validation_results.md`; the raw files persist, so use `--regrade` for free.
 
-**6. Wrap up validation ($0).** Count uncited sentences in the answered responses (target 0; see the
-`- [ ]` lines in the report). Gate 1 recheck: the lowest must-pass score is 0.254 (Q7, which passes via named doc),
-the highest must-stop is 0.000, so 0.3 holds. Record in MANUAL.md + the web mirror (rev 47 → new).
+**6. Wrap up validation — DONE 2026-09-23 except the web mirror ($0).** Uncited sentences counted
+by hand and written into `docs/validation_results.md` (§ "Uncited sentences"): Q2/Q4 clean, Q1/Q5
+one each, Q7 31 of 36. Gate-1 recheck recorded: 0.3 holds. MANUAL.md updated (Problem G, decision
+log, open items). **Still to do: the web mirror** https://claude.ai/artifact/J1U69gY5YUBYznPztFrYY2
+is rev 47 and now trails MANUAL.md by two sessions — it needs §6 Problem G, the four new decision-log
+rows, and the rewritten open items.
+⚠️ `run_validation.py` regenerates `docs/validation_results.md` from the raw run file, so the
+hand-read notes there are **overwritten by the next run**. Re-add them after a rerun, or move them
+into MANUAL.md first.
 
 **7. Deployment follow-ups.**
 - Git auto-deploy: connect the repo in Vercel (Settings → Git, root directory `web`). Until then, run `vercel deploy --prod --yes` from `web/`.
