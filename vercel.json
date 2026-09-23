@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "rag/api.py": {
+      "maxDuration": 300,
+      "excludeFiles": "{web/**,data/**,docs/**,db/**,scripts/**,.cache/**,node_modules/**,.venv/**,**/__pycache__/**,*.md,*.pdf}"
+    }
+  }
+}

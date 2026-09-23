@@ -49,6 +49,12 @@ anthropic==1.7.0
 # ── serving ─────────────────────────────────────────────────────────────────
 fastapi==0.141.1
 uvicorn[standard]==0.53.0
+# rag/api.py imports both of these directly. They were reaching this venv only
+# as transitive dependencies of `mcp` (pulled in by pydantic-ai), so a clean
+# install without it would have failed at import. [crypto] is what supplies
+# EdDSA, which is the algorithm Neon Auth signs its JWTs with.
+sse-starlette==3.4.11
+pyjwt[crypto]==2.14.0
 
 # ── misc ────────────────────────────────────────────────────────────────────
 python-dotenv==1.2.3

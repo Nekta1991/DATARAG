@@ -1,0 +1,39 @@
+# Serverless build definition — this file is for Vercel, not for local work.
+#
+# Local development installs requirements.txt, which adds Docling, torch and
+# sentence-transformers for ingestion and the GPU reranker. None of that can
+# ship to a Vercel function: torch alone is far past the bundle limit, the
+# bge reranker is 2.29 GB of weights, and there is no GPU to run it on.
+#
+# So the deployed API runs RERANK_BACKEND=voyage and installs only what the
+# serving path actually imports. Verified by tracing rag.api's imports: the
+# heavy modules are reachable only from _reranker(), which the voyage backend
+# never calls, and from voyageai -> langchain_text_splitters, whose
+# `from sentence_transformers import ...` is guarded by try/except ImportError
+# and degrades cleanly when the package is absent.
+#
+# Set RERANK_SCORE_THRESHOLD too: the Voyage scale is not bge's, and carrying
+# the local 0.3 over would let off-topic questions through gate 1 as paid
+# Claude calls. See docs/rerank_comparison.md.
+
+[project]
+name = "datarag-api"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    # agent + generation
+    "pydantic-ai==2.46.0",
+    "anthropic==1.7.0",
+    # retrieval
+    "voyageai==0.5.0",
+    "tokenizers==0.23.2",      # the vendored Voyage tokenizer, without transformers
+    "psycopg[binary]==3.3.6",
+    # serving
+    "fastapi==0.141.1",
+    "sse-starlette==3.4.11",
+    "pyjwt[crypto]==2.14.0",   # [crypto] supplies EdDSA, which Neon Auth signs with
+    "python-dotenv==1.2.3",
+]
+
+[tool.vercel]
+entrypoint = "rag.api:app"

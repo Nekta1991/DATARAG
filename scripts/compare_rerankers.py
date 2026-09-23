@@ -48,13 +48,15 @@ VOYAGE_RERANK_MODEL = "rerank-2.5"
 # whichever is short.
 TPM_LIMIT = 10_000
 RPM_LIMIT = 3
-# Voyage's accounting is stricter than a naive 60-second rolling window.
-# Measured: 8,651 and 9,272-token requests succeeded with a clear window, but
-# 9,400 and 9,530-token ones were refused after waiting out 61 seconds. Rather
-# than model their bookkeeping, anything large simply waits for a demonstrably
-# empty window plus a margin. Slower, and it stops losing cases to retries.
-WINDOW_SEC = 40
-LARGE_REQUEST = 6_000  # above this, demand a clear window
+# WINDOW_SEC must be >= Voyage's own 60-second window, or this limiter expires
+# entries it still owes for. Shortening it to 40 to speed a run up put two
+# 5,184 and 5,069-token requests 41 s apart - inside one real minute, 10,253
+# tokens - and Voyage refused the second. 70 leaves a margin over 60.
+WINDOW_SEC = 70
+# Above this, wait for a demonstrably empty window rather than trusting the
+# arithmetic: ~8,000-token requests were refused even when the sums said they
+# fit, while <= 5,000-token ones behave predictably.
+LARGE_REQUEST = 6_000
 # Estimating the payload from character count does not work on this corpus and
 # the first version of this script got it badly wrong. Chars-per-token ranges
 # from ~1.3 on dense prose to ~2.8 overall, because the markdown tables are
