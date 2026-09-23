@@ -129,7 +129,7 @@ async def query(body: QueryIn, user: dict = Depends(require_admin)):
             if body.stub:
                 from pydantic_ai.models.test import TestModel
                 model = TestModel(call_tools=[])  # no tool calls: no extra Voyage requests
-            A.answer_question(body.question, model=model, emit=emit)
+            A.answer_question(body.question, model=model, emit=emit, source="api")
             emit("done", {"ok": True})
         except Exception as e:  # already reported as an `error` event where it arose
             emit("done", {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"})

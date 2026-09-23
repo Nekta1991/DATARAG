@@ -16,6 +16,9 @@ __pycache__/
 .cache/
 data/processed/
 data/chunks/
+# Rerank comparison cache: mostly query embedding vectors, and re-derivable
+# (slowly) from the API. The findings live in docs/rerank_comparison.md.
+data/rerank_compare.json
 
 # OS / editor
 Thumbs.db

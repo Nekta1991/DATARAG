@@ -30,20 +30,21 @@ decline without searching when the question's premise (another year, another
 programme) is plainly outside the corpus the instructions describe: measured
 on the 2027 question, 1 request, $0.0018. Accepted - the corpus is 2026-only.
 
-Every paid run is appended to data/spend_ledger.jsonl, and a run that could
-take the ledger past BUDGET_USD is refused before any request is sent.
+Every paid run reserves its worst case in the Postgres ledger before the first
+request and settles at the real cost afterwards, so a run that could take the
+total past BUDGET_USD is refused before anything is sent - and the ceiling
+holds across processes and serverless instances, which the local JSONL file it
+replaced could not. See rag/ledger.py.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import time
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from functools import lru_cache
 
 from pydantic import BaseModel, Field
@@ -52,6 +53,7 @@ from pydantic_ai.messages import ModelRequest, ModelResponse, RetryPromptPart
 from pydantic_ai.usage import UsageLimits
 
 from rag import config
+from rag import ledger
 from rag.documents import document_catalog, named_documents, retrieve_full_document
 from rag.retrieval import Hit, embed_query, hybrid_candidates, rerank, TOP_N
 
@@ -76,8 +78,6 @@ LIMITS = UsageLimits(request_limit=4, input_tokens_limit=60_000,
                      output_tokens_limit=4_000)
 WORST_CASE_USD = (LIMITS.input_tokens_limit * PRICES.get(MODEL, PRICES["claude-opus-5"])[0] * 1.25
                   + LIMITS.output_tokens_limit * PRICES.get(MODEL, PRICES["claude-opus-5"])[1])
-
-LEDGER = config.ROOT / "data" / "spend_ledger.jsonl"
 
 
 # -- output schema ----------------------------------------------------------
@@ -320,20 +320,18 @@ def request_trace(messages) -> list[str]:
 
 
 def spent_so_far() -> float:
-    if not LEDGER.exists():
-        return 0.0
-    return sum(json.loads(l)["cost_usd"] for l in LEDGER.read_text(encoding="utf-8").splitlines() if l)
+    """Every instance's spend, not this process's. See rag/ledger.py."""
+    return ledger.spent_so_far()
 
 
-def _record(r: QueryResult, model: str) -> None:
-    LEDGER.parent.mkdir(exist_ok=True)
-    with LEDGER.open("a", encoding="utf-8") as f:
-        f.write(json.dumps({
-            "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "model": model, "question": r.question, "status": r.status,
-            "reason": r.reason, "usage": r.usage, "cost_usd": r.cost_usd,
-            "trace": r.trace,
-        }, ensure_ascii=False) + "\n")
+def _settle(reservation, r: QueryResult) -> None:
+    """Replace the reserved worst case with what the run really cost. Called on
+    every exit from a paid run, including the failures - a run that was billed
+    and then crashed must not be released, or the budget forgets it."""
+    if reservation is None:
+        return
+    ledger.settle(reservation.id, status=r.status, reason=r.reason,
+                  usage=r.usage, cost_usd=r.cost_usd, trace=r.trace)
 
 
 # -- entry point ------------------------------------------------------------
@@ -348,7 +346,8 @@ def _finish(deps: Deps, r: QueryResult) -> QueryResult:
     return r
 
 
-def answer_question(question: str, model=None, emit=None) -> QueryResult:
+def answer_question(question: str, model=None, emit=None,
+                    source: str = "cli") -> QueryResult:
     """model=None -> the real, paid Claude model. Pass a pydantic-ai test
     model to exercise the whole pipeline for free. `emit(event, data)`
     receives each step as it happens (the dashboard console)."""
@@ -368,11 +367,16 @@ def answer_question(question: str, model=None, emit=None) -> QueryResult:
                                          [], [], top, {}, 0.0))
 
     paid = model is None
-    if paid and spent_so_far() + WORST_CASE_USD > BUDGET_USD:
-        msg = (f"budget guard: ${spent_so_far():.4f} spent + worst case "
-               f"${WORST_CASE_USD:.2f} would exceed ${BUDGET_USD:.2f}")
-        deps.say("error", {"type": "BudgetGuard", "message": msg})
-        raise RuntimeError(msg)
+    # Reserve the worst case before the call, not after. Reading a total and
+    # then deciding is a race two concurrent runs can both win; the reservation
+    # makes the decision and the write one transaction. See rag/ledger.py.
+    reservation = None
+    if paid:
+        try:
+            reservation = ledger.reserve(MODEL, question, WORST_CASE_USD, source=source)
+        except ledger.BudgetExceeded as e:
+            deps.say("error", {"type": "BudgetGuard", "message": str(e)})
+            raise RuntimeError(str(e)) from e
 
     agent = build_agent()
     deps.say("agent.start", {"model": MODEL if paid else "stub", "effort": EFFORT})
@@ -386,7 +390,7 @@ def answer_question(question: str, model=None, emit=None) -> QueryResult:
                         [], deps.tool_calls, top, {"note": "usage unknown, worst case"},
                         WORST_CASE_USD if paid else 0.0)
         if paid:
-            _record(r, MODEL)
+            _settle(reservation, r)
         deps.say("error", {"type": type(e).__name__, "message": str(e)[:300]})
         _finish(deps, r)
         raise
@@ -410,7 +414,7 @@ def answer_question(question: str, model=None, emit=None) -> QueryResult:
         r = QueryResult(question, "declined", f"error: {type(e).__name__}", DECLINE,
                         [], deps.tool_calls, top, usage, cost, trace=trace)
         if paid:
-            _record(r, MODEL)
+            _settle(reservation, r)
         deps.say("error", {"type": type(e).__name__, "message": str(e)[:300]})
         _finish(deps, r)
         raise
@@ -433,7 +437,7 @@ def answer_question(question: str, model=None, emit=None) -> QueryResult:
                     deps.tool_calls, top, usage, cost, bad, trace,
                     None if ok else out.model_dump())
     if paid:
-        _record(r, MODEL)
+        _settle(reservation, r)
     return _finish(deps, r)
 
 
@@ -460,7 +464,10 @@ def _main():
     ap.add_argument("--ledger", action="store_true")
     a = ap.parse_args()
     if a.ledger or not a.question:
-        print(f"spent ${spent_so_far():.4f} of ${BUDGET_USD:.2f}  ({LEDGER})")
+        t = ledger.totals()
+        print(f"spent ${t['spent_usd']:.4f} of ${t['budget_usd']:.2f}  "
+              f"({t['settled_runs']} settled, {t['open_reservations']} reserved)  "
+              f"- python -m rag.ledger --rows")
         return
     model = None
     if a.stub:
