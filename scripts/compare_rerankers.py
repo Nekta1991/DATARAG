@@ -53,8 +53,8 @@ RPM_LIMIT = 3
 # 9,400 and 9,530-token ones were refused after waiting out 61 seconds. Rather
 # than model their bookkeeping, anything large simply waits for a demonstrably
 # empty window plus a margin. Slower, and it stops losing cases to retries.
-WINDOW_SEC = 75
-LARGE_REQUEST = 6_000
+WINDOW_SEC = 40
+LARGE_REQUEST = 6_000  # above this, demand a clear window
 # Estimating the payload from character count does not work on this corpus and
 # the first version of this script got it badly wrong. Chars-per-token ranges
 # from ~1.3 on dense prose to ~2.8 overall, because the markdown tables are

@@ -55,13 +55,24 @@ VOYAGE_RERANK_MODEL = os.getenv("VOYAGE_RERANK_MODEL", "rerank-2.5")
 # The local cross-encoder scores the pool in batches on its own GPU and has no
 # such limit, so capping it there would throw away candidates for nothing.
 #
-# Measured 2026-09-23: Voyage's unpaid tier allows 10,000 tokens/minute, and a
-# full candidate pool for this corpus runs 2,872-10,262 tokens. Requests at
-# 8,651 and 9,272 went through; 9,430 and 9,536 were refused even with a clear
-# window, so the usable ceiling sits just under ~9,400 and a third of the
-# questions would simply fail. 8,000 leaves margin for Voyage's own per-
-# document overhead (it bills ~4% above a local token count).
-VOYAGE_RERANK_TOKEN_BUDGET = int(os.getenv("VOYAGE_RERANK_TOKEN_BUDGET", "8000"))
+# Measured 2026-09-23. The unpaid tier advertises 10,000 tokens/minute, but the
+# usable size is well under that and the limit is not a clean token bucket:
+# repeating one payload three times, 30 s apart, 3,000 and 5,000-token requests
+# succeeded 3/3 while 6,500 was refused on the first attempt, and ~8,000-token
+# requests failed intermittently even spaced 76 s apart. A full candidate pool
+# for this corpus is 2,872-10,262 tokens, so the pool has to be trimmed.
+#
+# 5,000 is where reliability and quality meet. Compared against the local
+# reranker over the full pool, a 5,000-token budget keeps the same top passage
+# for 12 of 14 calibration questions (the exceptions: Q7, which clears gate 1
+# via named_doc rather than score, and Q5, whose top-1 changes and scores
+# 0.5203 instead of 0.7573). At 3,000 only 8 of 14 survive, which is a real
+# loss of answer quality, not just of score.
+#
+# This ceiling is a property of the unpaid tier, not of rerank-2.5. With a
+# payment method on the Voyage account the rate limits lift and the full pool
+# fits; reranking itself stays free either way, inside the 200M allowance.
+VOYAGE_RERANK_TOKEN_BUDGET = int(os.getenv("VOYAGE_RERANK_TOKEN_BUDGET", "5000"))
 TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "20"))
 LEXICAL_TOP_K = int(os.getenv("LEXICAL_TOP_K", "10"))
 TOP_N = int(os.getenv("RERANK_TOP_N", "5"))
