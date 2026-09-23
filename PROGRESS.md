@@ -9,7 +9,7 @@ what is waiting on the user, and the ordered steps with costs and done-criteria.
 
 | | State |
 |---|---|
-| **API spend** | **$0.2336 / $5.00**, from the ledger `data/spend_ledger.jsonl` |
+| **API spend** | **$0.2741 / $5.00**, from the **Neon table `spend_ledger`** (`python -m rag.ledger --rows`). The JSONL file is kept as history but is no longer the source of truth |
 | Live site | **https://datarag-rho.vercel.app** (Vercel `web-gen-ai-teleapo/datarag`, CLI deploys from `web/`) |
 | Serving | Vercel UI → `/rag/api/*` proxy → `RAG_API_URL` = `https://bonsai-halogen-reprocess.ngrok-free.dev` (static ngrok domain) → uvicorn :8000 on this PC (GPU reranker). **The site is down unless uvicorn and `ngrok http 8000` both run here.** |
 | Corpus | 14 docs / 1,025 chunks in Neon `production` (`br-icy-butterfly-b3grfw5x`) |
@@ -18,7 +18,7 @@ what is waiting on the user, and the ordered steps with costs and done-criteria.
 | Neon Auth | enabled; **0 users**. The trusted domain `https://datarag-rho.vercel.app` is added, and localhost is allowed |
 | Git | `main` pushed to **public** `github.com/Nekta1991/DATARAG` (latest: validation run 1 + draft capture). Secret-scan before every push |
 | Tests (free) | `scripts/test_gates.py` **10/10**, `scripts/test_api.py` 10/10 (both re-run 2026-09-23) |
-| Validation | run 1 **8/10**, $0.1794: `docs/validation_results.md`, raw `data/validation_runs/20260922-224505_paid.json` |
+| Validation | run 1 **8/10**, $0.1794. **Q3 and Q6 rerun 2026-09-23, both now PASS** ($0.0405) → effectively **10/10**. `docs/validation_results.md` leads with the reruns; raw files for both runs are kept |
 | Docs | `MANUAL.md` **current to 2026-09-23** (Problem G, the 2026-09-22 decisions, open items). Web mirror https://claude.ai/artifact/J1U69gY5YUBYznPztFrYY2 is **rev 47, stale — it now trails MANUAL.md by two sessions**. `docs/validation_questions.md`, `docs/dashboard_build_brief.md` (§2 synced 2026-09-22) |
 | Frontend work | Claude Design is iterating on `web/app/dashboard.tsx` + CSS. **Don't edit those**; integrate through `page.tsx` / routes |
 
