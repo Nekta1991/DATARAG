@@ -609,12 +609,51 @@ stub's usage object before the first paid call — now done in the free test.
 
 ---
 
+### Problem G — the model rewrote a table, and the gate caught it / 表の書き換え
+
+**Symptom.** Validation Q3 (「通常枠の補助額と補助率はいくらですか？」) declined at
+gate 2 with `unverified_quote`, although the answer it was declining was factually
+right. The rejected quote was 「補助額 ５万円～１５０万円未満 補助額 １５０万円～
+４５０万円以下」 — one label pasted onto each column of a table.
+
+**The first diagnosis was wrong, and checking it cost nothing.** The obvious
+reading is that the source is an unquotable table: chunk 304's 補助率 cell is a
+merged cell that Docling splits across two rows, so the sentence the model needed
+exists nowhere contiguously. That would have argued for loosening
+`verify_citations` to accept cells belonging to one row.
+
+Replaying the model's own query 「通常枠 補助額 補助率」 through retrieval — free,
+local reranker and a free-tier query embedding — showed that chunk was never
+retrieved. The top five were chunks 316, 871, 318, 319, 317, and four of them carry
+a clean `| 補助額 | ５万円～１５０万円未満 | … |` row. Chunk 316's row normalizes to
+`|補助額|5万円~150万円未満|150万円~450万円以下|5万円~150万円|` and satisfies the
+existing gate unchanged.
+
+**Fix.** Retrieval was never at fault and the gate was never too strict: a passing
+quote was sitting at rank 1 and the model reformatted it into prose. So the fix is
+one instruction — quote a table row whole, `|` separators included, without
+stitching cells, supplying headers or merging rows — and `verify_citations` stays
+exactly as strict as it was.
+
+**Lesson.** When an evidence gate rejects a correct answer, the tempting fix is to
+loosen the gate. Reproducing what the model actually saw is free here, and it
+decided the question: the gate was right, the prompt was wrong. Loosening
+`verify_citations` would have permanently widened what counts as a quote in order
+to accommodate a prompt bug. Both directions are now pinned by free tests — a
+verbatim row is accepted, and this exact stitched string is still refused.
+
+---
+
 ## 7. Decision log / 意思決定の記録
 
 Newest first. Quick-reference version of §2–§6.
 
 | Date | Decision | Reason | Rejected alternative |
 |---|---|---|---|
+| 2026-09-23 | Table quotes fixed in the prompt; `verify_citations` left untouched | Replaying Q3's retrieval showed a clean quotable row at rank 1 — the gate was right, the model reformatted it | A table-aware gate accepting cells from one row (permanently loosens what counts as a quote) |
+| 2026-09-22 | Gate 1 also passes when the question names a corpus document | Q7 scores 0.254 on a structural question about a document it names; topicality scores do not measure "asks about this document" | Lowering the 0.3 threshold for everyone |
+| 2026-09-22 | `ToolOutput(Answer, strict=True)` | A malformed `final_result` cost a whole extra request as a validation retry — the unexplained third request | Non-strict output (pydantic-ai's default) |
+| 2026-09-22 | Keep the model's draft on a gate-2 decline | A decline with no draft cannot be diagnosed without paying to reproduce it | Discarding the draft on decline |
 | 2026-09-21 | Auth: Neon Auth with one admin account; the API verifies the JWT against JWKS and requires role=admin in `neon_auth."user"` | Users live in the same database; open sign-up grants nothing without the role; no password passes through any transcript | A hand-rolled admin table; a shared API key |
 | 2026-09-21 | Stub mode is the dashboard default; a paid run needs an explicit checkbox | A stray click must not spend the budget | Paid by default |
 | 2026-09-21 | Dashboard hosting: backend on this PC via tunnel first, then all-Vercel with an API reranker | Keeps the measured GPU bge setup for the first demo; Vercel has no GPU | CPU bge on Vercel (2.29 GB cold load, unmeasured latency); a third hosting platform |
@@ -651,10 +690,11 @@ Newest first. Quick-reference version of §2–§6.
 
 | Item | Status |
 |---|---|
-| Test suite (step 5) | 8–10 questions, ~$0.35–0.45. Includes 2027 (decline), off-topic (gate 1), cross-programme (answer: no), a numeric 補助率 question, a full-document question |
-| `RERANK_SCORE_THRESHOLD=0.3` | Set from 7 data points; recheck against the suite |
-| Uncited claims | Gate 2 verifies citations, not sentences. Prompt now demands one citation per claim; measure in step 5 |
-| Third request per answered question | First paid run used 3 requests where 2 were expected; not yet explained |
+| Test suite (step 5) | **Run 1 done 2026-09-22: 8/10, $0.1794** (`docs/validation_results.md`). Q3 (table quote) fixed in the prompt 2026-09-23, rerun pending; Q6 (`no_citation`) open |
+| `RERANK_SCORE_THRESHOLD=0.3` | **Holds.** Across the suite the highest must-stop is 0.000 and the lowest must-pass 0.254 (Q7, which passes via named-document, not score). Nothing lands near 0.3 from either side |
+| Uncited claims | **Measured 2026-09-23.** Q2/Q4 clean; Q1/Q5 one trailing uncited sentence each (both true, both from an already-quoted passage); Q7 31 of 36 uncited |
+| Citation cap vs enumerations | 「主張ごとに1件、最大5件」 contradicts itself when the answer is a list: Q7 has ~36 claims and a cap of 5. Suspected cause of Q6's `no_citation`. Needs a wording that scopes citations to the article introducing a list |
+| Third request per answered question | **Explained and fixed 2026-09-22:** a non-strict output tool let a malformed `final_result` cost a validation retry. With `strict=True`, every answer in run 1 took 2 requests |
 | 枠 discrimination on numeric questions | Every 公募要領 carries the same 類型比較表, so all 枠 tables score ~0.998 for a 補助率 question. Ranking cannot separate 枠 here — the generation prompt must, via `source_doc` |
 | HNSW vs exact scan | Built, but reversible if demo recall matters more |
 | Table header detection | Markdown output still mis-detects some header rows |
