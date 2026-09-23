@@ -8,6 +8,31 @@ type Mode = "sign-in" | "sign-up";
 
 const labelStyle = { display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5, color: "var(--color-neutral-800)" } as const;
 
+/** Neon Auth's allow_localhost matches the hostname `localhost` only, so
+ * 127.0.0.1 and a LAN IP are rejected with 403 INVALID_ORIGIN. `next start`
+ * prints both a Local and a Network URL, so opening the wrong one is easy and
+ * the failure otherwise reads as "the auth server is down". Returns a message
+ * naming the right URL, or null when the host is not the problem. */
+function wrongHostHint(): string | null {
+  if (typeof window === "undefined") return null;
+  const { hostname, port, protocol } = window.location;
+  if (hostname === "localhost") return null;
+  const isLocal = hostname === "127.0.0.1" || hostname === "[::1]"
+    || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname);
+  if (!isLocal) return null;
+  return `このホスト名（${hostname}）は認証で許可されていません。`
+    + `${protocol}//localhost${port ? `:${port}` : ""} を開いてください。`;
+}
+
+/** One mapping for both shapes a failed sign-in arrives in. 401 is a rejected
+ * credential, not an unreachable server - saying so is the difference between
+ * retyping a password and debugging the network. */
+function authMessage(status?: number): string {
+  if (status === 401) return "メールアドレスまたはパスワードが正しくありません。";
+  if (status === 403) return wrongHostHint() ?? "このオリジンからのサインインは許可されていません。";
+  return wrongHostHint() ?? "認証サーバーに接続できませんでした。";
+}
+
 // Registration creates an ordinary account. Admin rights are granted separately
 // (role=admin in neon_auth."user"); the Python API answers 403 until then.
 export default function SignInPage() {
@@ -60,14 +85,18 @@ export default function SignInPage() {
       } else {
         const { error } = await authClient.signIn.email({ email, password });
         if (error) {
-          setError("メールアドレスまたはパスワードが正しくありません。");
+          setError(authMessage(error.status));
           return;
         }
       }
       router.replace("/");
       router.refresh();
-    } catch {
-      setError("認証サーバーに接続できませんでした。");
+    } catch (e) {
+      // Depending on the client's fetch options a failed sign-in either comes
+      // back as `error` above or is thrown here. Both carry a status, so both
+      // map through the same place - otherwise a rejected password reads as
+      // "the auth server is unreachable", which sends debugging the wrong way.
+      setError(authMessage((e as { status?: number } | null)?.status));
     } finally {
       setPending(false);
     }

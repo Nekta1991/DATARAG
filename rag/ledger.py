@@ -107,16 +107,29 @@ def reserve(model: str, question: str, worst_case: float,
 
 
 def settle(reservation_id: int, *, status: str, reason: str, usage: dict,
-           cost_usd: float, trace: list[str]) -> None:
-    """Replace the held worst case with what the run actually cost."""
+           cost_usd: float, trace: list[str], answer: str = "",
+           citations: list | None = None, rejected_quotes: list | None = None,
+           draft: dict | None = None) -> None:
+    """Replace the held worst case with what the run actually cost, and record
+    what it produced.
+
+    The output is stored, not just the price. A paid run whose answer lives
+    only in a browser tab cannot be checked afterwards, which made "was that
+    answer right?" unanswerable for anything run from the dashboard.
+    """
     with _connect() as conn, conn.transaction():
         conn.execute(
             """UPDATE spend_ledger
                   SET state = 'final', status = %s, reason = %s, usage = %s,
-                      trace = %s, cost_usd = %s, ts = now()
+                      trace = %s, cost_usd = %s, ts = now(), answer = %s,
+                      citations = %s, rejected_quotes = %s, draft = %s
                 WHERE id = %s AND state = 'reserved'""",
             (status, reason, json.dumps(usage, ensure_ascii=False),
-             json.dumps(trace, ensure_ascii=False), cost_usd, reservation_id))
+             json.dumps(trace, ensure_ascii=False), cost_usd, answer,
+             json.dumps(citations or [], ensure_ascii=False),
+             json.dumps(rejected_quotes or [], ensure_ascii=False),
+             json.dumps(draft, ensure_ascii=False) if draft is not None else None,
+             reservation_id))
 
 
 def release(reservation_id: int, note: str = "") -> None:
@@ -157,12 +170,59 @@ def release_stale(minutes: int) -> int:
 
 # -- CLI --------------------------------------------------------------------
 
+def _show(row_id: int | None) -> None:
+    """One run in full: what was asked, what came back, and what backed it."""
+    where = "WHERE id = %s" if row_id else "WHERE state <> 'released'"
+    params = (row_id,) if row_id else ()
+    with _connect() as conn:
+        r = conn.execute(
+            f"""SELECT id, ts, source, model, status, reason, cost_usd, question,
+                       answer, citations, rejected_quotes, draft, trace, usage
+                  FROM spend_ledger {where} ORDER BY ts DESC LIMIT 1""", params).fetchone()
+    if r is None:
+        print("no such run")
+        return
+    (rid, ts, source, model, status, reason, cost, q, answer,
+     cites, rejected, draft, trace, usage) = r
+
+    print(f"#{rid}  {ts:%Y-%m-%d %H:%M}  {source}  {model}")
+    print(f"{status} / {reason}   ${float(cost):.4f}   {trace}")
+    print(f"\nQ: {q}\n")
+    if answer:
+        print("ANSWER:")
+        print(answer)
+    elif status == "answered":
+        print("(no answer stored - run predates answer persistence, 2026-09-23)")
+    if cites:
+        print(f"\nCITATIONS ({len(cites)}) - each verified verbatim by gate 2:")
+        for c in cites:
+            print(f"  [{c.get('source_doc')}]")
+            print(f"    {c.get('quote', '')[:150]}")
+    if rejected:
+        print(f"\nREJECTED QUOTES ({len(rejected)}) - why gate 2 declined:")
+        for qt in rejected:
+            print(f"  {qt[:150]}")
+    if draft:
+        print("\nDRAFT the model proposed and was refused:")
+        print(json.dumps(draft, ensure_ascii=False, indent=1)[:1200])
+    if usage:
+        print(f"\nusage: {usage.get('requests')} requests, "
+              f"{usage.get('input_tokens')} in / {usage.get('output_tokens')} out")
+
+
+
 def _main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rows", action="store_true", help="list every run")
+    ap.add_argument("--show", type=int, metavar="ID", nargs="?", const=-1,
+                    help="print one run in full (default: the newest)")
     ap.add_argument("--release-stale", type=int, metavar="MINUTES",
                     help="release reservations older than MINUTES")
     args = ap.parse_args()
+
+    if args.show is not None:
+        _show(None if args.show == -1 else args.show)
+        return
 
     if args.release_stale is not None:
         print(f"released {release_stale(args.release_stale)} stale reservation(s)")

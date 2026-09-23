@@ -44,8 +44,28 @@ CREATE TABLE IF NOT EXISTS spend_ledger (
     cost_usd    numeric(12, 6) NOT NULL CHECK (cost_usd >= 0),
 
     -- provenance of the row itself, for reading the ledger later
-    source      text        NOT NULL DEFAULT 'api'   -- api | cli | import
+    source      text        NOT NULL DEFAULT 'api',  -- api | cli | import
+
+    -- What the run actually produced. Without these a paid run cannot be
+    -- audited after the fact: the cost is recorded but the thing it bought is
+    -- not, so "was that answer correct?" is unanswerable once the browser tab
+    -- is closed. Validation runs saved this to their own files; dashboard runs
+    -- had nowhere to put it.
+    answer      text,
+    citations   jsonb       NOT NULL DEFAULT '[]'::jsonb,
+
+    -- Why a decline declined. rejected_quotes is the gate-2 evidence; draft is
+    -- what the model proposed and was refused (kept since 2026-09-22 so a paid
+    -- decline can be diagnosed without paying to reproduce it).
+    rejected_quotes jsonb   NOT NULL DEFAULT '[]'::jsonb,
+    draft           jsonb
 );
+
+-- Added 2026-09-23 to an existing table; these are no-ops on a fresh create.
+ALTER TABLE spend_ledger ADD COLUMN IF NOT EXISTS answer text;
+ALTER TABLE spend_ledger ADD COLUMN IF NOT EXISTS citations jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE spend_ledger ADD COLUMN IF NOT EXISTS rejected_quotes jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE spend_ledger ADD COLUMN IF NOT EXISTS draft jsonb;
 
 -- The guard sums the ledger on every paid run; keep it cheap and let the
 -- planner skip released rows.

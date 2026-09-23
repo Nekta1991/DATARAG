@@ -72,13 +72,21 @@ def main() -> int:
 
         spent, settled, open_ = conn.execute(
             "SELECT spent_usd, settled_runs, open_reservations FROM spend_total").fetchone()
+        # Compare only the rows that came from the file. The table also holds
+        # runs made since, so checking the grand total against the file would
+        # report a mismatch every time a query is run - a warning that cries
+        # wolf is worse than none.
+        imported_total = float(conn.execute(
+            "SELECT COALESCE(sum(cost_usd), 0) FROM spend_ledger WHERE source = 'import'"
+        ).fetchone()[0])
 
     print(f"imported {imported} new row(s), skipped {len(rows) - imported} already present")
     print(f"spend_total: ${float(spent):.4f}  ({settled} settled, {open_} reserved)")
-    if abs(float(spent) - total) > 1e-6:
-        print(f"⚠ ledger total ${float(spent):.4f} != file total ${total:.4f}")
+    if abs(imported_total - total) > 1e-6:
+        print(f"⚠ imported rows total ${imported_total:.4f} != file total ${total:.4f}")
         return 1
-    print("✓ matches the file total")
+    print(f"✓ imported rows match the file (${imported_total:.4f}); "
+          f"${float(spent) - imported_total:.4f} more was spent since")
     return 0
 
 

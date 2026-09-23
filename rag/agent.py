@@ -298,6 +298,47 @@ def build_agent() -> Agent[Deps, Answer]:
     )
 
 
+# -- free stub --------------------------------------------------------------
+
+def stub_model():
+    """A free stand-in for Claude that exercises the whole pipeline.
+
+    It searches with the question, then cites the first returned passage
+    verbatim, so a stub run reaches `answered` and every stage - retrieval,
+    both gates, the citation check - is really executed. The only thing not
+    exercised is Claude's judgement.
+
+    This replaces `TestModel`, which fills the output schema with type
+    defaults: `answerable` defaults to False, so a TestModel stub ALWAYS
+    declined at gate 2 no matter how good retrieval had been. On the dashboard
+    that made every free run end in 「この情報からは判断できません」 and made the
+    answered path impossible to demonstrate without paying.
+
+    Still $0 and still no extra Voyage request: gate 1 has already searched
+    with this exact question, and `_search` caches per query string, so the
+    tool call below is a cache hit.
+    """
+    from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+    from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+    def fn(messages, info: AgentInfo) -> ModelResponse:
+        seen = next((str(p.content) for m in reversed(messages)
+                     for p in getattr(m, "parts", []) if isinstance(p, ToolReturnPart)), None)
+        if seen is None:
+            question = messages[0].parts[-1].content
+            return ModelResponse(parts=[ToolCallPart("search_knowledge_base",
+                                                     {"query": question})])
+        # First block of the tool result: "[1] 出典: <src>\n    <meta>\n<body>"
+        src = seen.split("出典: ", 1)[1].split("\n", 1)[0]
+        body = seen.split("\n", 2)[2].split("\n\n[", 1)[0]
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {
+            "answerable": True,
+            "answer": "（スタブ回答 — 生成はしていません）" + body[:60],
+            "citations": [{"source_doc": src, "quote": body[:40]}]})])
+
+    return FunctionModel(fn)
+
+
 # -- evidence gate ----------------------------------------------------------
 
 def _norm(s: str) -> str:
@@ -361,7 +402,10 @@ def _settle(reservation, r: QueryResult) -> None:
     if reservation is None:
         return
     ledger.settle(reservation.id, status=r.status, reason=r.reason,
-                  usage=r.usage, cost_usd=r.cost_usd, trace=r.trace)
+                  usage=r.usage, cost_usd=r.cost_usd, trace=r.trace,
+                  answer=r.answer,
+                  citations=[c.model_dump() for c in r.citations],
+                  rejected_quotes=r.rejected_quotes, draft=r.draft)
 
 
 # -- entry point ------------------------------------------------------------

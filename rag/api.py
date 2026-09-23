@@ -141,8 +141,12 @@ async def query(body: QueryIn, user: dict = Depends(require_admin)):
         try:
             model = None
             if body.stub:
-                from pydantic_ai.models.test import TestModel
-                model = TestModel(call_tools=[])  # no tool calls: no extra Voyage requests
+                # A scripted stub that searches and cites, not TestModel: that
+                # filled the schema with defaults, so `answerable` was always
+                # False and every free run declined at gate 2 regardless of
+                # retrieval. Still $0 and no extra Voyage request (the search
+                # is a cache hit on gate 1's). See rag.agent.stub_model.
+                model = A.stub_model()
             A.answer_question(body.question, model=model, emit=emit, source="api")
             emit("done", {"ok": True})
         except Exception as e:  # already reported as an `error` event where it arose

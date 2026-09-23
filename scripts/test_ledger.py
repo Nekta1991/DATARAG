@@ -65,12 +65,34 @@ def main() -> int:
     L.settle(r.id, status="answered", reason="answered", usage={}, cost_usd=0.0123, trace=[])
     check("settle is not re-appliable", abs(L.spent_so_far() - (start + 0.0123)) < 1e-6)
 
-    # 4. a released reservation leaves no trace in the total
+    # 3b. settle stores what the run produced, not just what it cost
+    r_out = L.reserve("test-model", "stores its output?", 0.19, source="cli")
+    made.append(r_out.id)
+    L.settle(r_out.id, status="declined", reason="unverified_quote", usage={"requests": 2},
+             cost_usd=0.01, trace=["search", "final_result"],
+             answer="", citations=[{"source_doc": "通常枠 交付規程", "quote": "| 補助額 |"}],
+             rejected_quotes=["補助額 ５万円 補助額 １５０万円"],
+             draft={"answerable": True, "answer": "draft text"})
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        cites, rej, draft = conn.execute(
+            "SELECT citations, rejected_quotes, draft FROM spend_ledger WHERE id = %s",
+            (r_out.id,)).fetchone()
+    check("settle stores citations, rejects and the draft",
+          len(cites) == 1 and cites[0]["source_doc"] == "通常枠 交付規程"
+          and rej == ["補助額 ５万円 補助額 １５０万円"]
+          and (draft or {}).get("answer") == "draft text",
+          "a paid run is auditable after the tab is closed")
+
+    # 4. a released reservation leaves no trace in the total. Measured against
+    # the total immediately before, not a running sum: an earlier case that
+    # settles a different amount should not be able to break this one.
+    before_release = L.spent_so_far()
     r2 = L.reserve("test-model", "released?", 0.19, source="cli")
     made.append(r2.id)
     L.release(r2.id, "test")
     check("release removes it from the total",
-          abs(L.spent_so_far() - (start + 0.0123)) < 1e-6)
+          abs(L.spent_so_far() - before_release) < 1e-6,
+          f"${before_release:.4f} unchanged")
 
     # 5. the ceiling actually refuses
     room = L.BUDGET_USD - L.spent_so_far()

@@ -55,8 +55,20 @@ def main():
             evs = events(r.text)
             names = [e for e, _ in evs]
             print("      events:", " -> ".join(names))
+            # agent.tool_call / agent.tool_result are here because the stub
+            # really calls search_knowledge_base (rag.agent.stub_model). The
+            # old TestModel stub called nothing, so a free run exercised none
+            # of the tool path - and always declined, since TestModel filled
+            # `answerable` with the bool default False.
+            #
+            # Note what does NOT repeat: there is no second embed/vector/bm25/
+            # rerank block after the tool call. Gate 1 already searched with
+            # this exact question and _search caches per query, so the tool
+            # call is a cache hit - which is what keeps a stub run at zero
+            # Voyage requests beyond the one gate 1 makes.
             want = ["run.start", "embed.done", "vector.done", "bm25.done", "rerank.done",
-                    "gate1", "agent.start", "gate2", "answer", "usage", "done"]
+                    "gate1", "agent.start", "agent.tool_call", "agent.tool_result",
+                    "gate2", "answer", "usage", "done"]
             check("stream carries every stage in order", names == want)
             d = dict(evs)
             check("gate1 passes at 0.8907", d["gate1"]["pass"] and d["gate1"]["top_score"] == 0.8907)
