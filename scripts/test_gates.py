@@ -116,6 +116,36 @@ case("named document, low score -> answered", Q7,
      "answered", "answered")
 
 
+# 9/10. Table quotes. Q3 of validation run 1 declined because the model
+# rewrote a markdown table into prose ("補助額 ５万円～… 補助額 １５０万円～…"),
+# stitching one label onto each column. Retrieval was not at fault: chunks 316
+# and 871 ranked 1-2 and both carry a clean "| 補助額 | … |" row. The gate must
+# keep rejecting the stitched form and accept the row copied as-is.
+Q3 = "通常枠 補助額 補助率"
+STITCHED = "補助額 ５万円～１５０万円未満 補助額 １５０万円～４５０万円以下"
+
+
+def table_row(text: str, label: str) -> tuple[str, str]:
+    """(source_doc, one markdown table row) from the block holding it."""
+    for block in text.split("\n\n["):
+        src = block.split("出典: ", 1)[1].split("\n", 1)[0] if "出典: " in block else None
+        for line in block.split("\n"):
+            if line.startswith(f"| {label}") and src:
+                return src, line
+    raise AssertionError(f"no '| {label}' row in tool output")
+
+
+case("table row verbatim -> answered", Q3,
+     scripted("search_knowledge_base", {"query": Q3},
+              lambda out: answer(True, [table_row(out, "補助額")])),
+     "answered", "answered")
+
+case("stitched table cells -> declined", Q3,
+     scripted("search_knowledge_base", {"query": Q3},
+              lambda out: answer(True, [(table_row(out, "補助額")[0], STITCHED)])),
+     "declined", "unverified_quote")
+
+
 def main():
     failed = 0
     for name, q, model, want_status, want_reason in CASES:

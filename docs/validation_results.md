@@ -21,6 +21,40 @@ Threshold 0.3. Lowest score that must pass: 0.2543. Highest score that must stop
 
 Q8 0.000 · Q7 0.254 · Q10 0.507 · Q9 0.562 · Q1 0.596 · Q5 0.757 · Q3 0.980 · Q4 0.995 · Q6 0.996 · Q2 0.999
 
+Threshold 0.3 holds: the gap between the highest must-stop (0.000) and the lowest
+must-pass (0.254, Q7, which passes via `named_doc` rather than on score) is the whole
+usable range. Nothing sits near 0.3 from either side.
+
+## Uncited sentences — read by hand (2026-09-23)
+
+Counts are per answered question above. Two of the five are clean; the other three
+split into two distinct causes, only one of which is a prompt lapse.
+
+**A lapse (Q1, Q5): one trailing sentence each.** In both, the model adds a true,
+document-grounded sentence after the cited one and does not cite it. Q5's is
+verifiable — 「採択結果が未確定の段階での申請自体は差し支えありません」 is the なお
+sentence of 第７ in chunk 186, in the same passage the model already quoted from. So
+the cause is not missing evidence; it is that one citation per *answer* felt like
+enough. Target 0 is reachable here by prompt alone.
+
+**Structural (Q7): 31 of 36 uncited, and the prompt causes it.** The answer enumerates
+~36 article titles; 「主張ごとに1件、最大5件」 caps citations at 5. The two rules
+contradict each other on any enumeration answer — every article title is a claim, and
+5 < 36. The model resolved it by citing the anchors (第1/9/16/27/36条) and leaving the
+rest bare, which is the sane reading, but it means Q7 "passes" with 86% of its claims
+uncited.
+
+**This is the leading explanation for Q6's `no_citation` failure (open issue 4).**
+Q6 asks for a 取消 list — the same enumeration shape as Q7, against the same 第27条
+material. Q7 shows the model resolving the cap by under-citing; Q6 shows 1,398 output
+tokens and *zero* citations, i.e. plausibly the same conflict resolved the other way
+(give up on citing rather than cite 5 of N). If so, Q6 is not a retrieval or evidence
+failure and the A/B rule test in open issue 5 is aimed at the wrong thing: rules A and
+B both concern *which 枠 a shared rule covers*, and neither touches the citation cap.
+**Check `rows[].draft` on the `--only 6` rerun before spending anything on A/B** — if
+the draft is a long uncited 取消 list, the fix is the cap wording (e.g. "on an
+enumeration, cite the article that introduces the list"), not the shared-rules line.
+
 ## Per question
 
 ### Q1 — PASS
@@ -35,7 +69,7 @@ Q8 0.000 · Q7 0.254 · Q10 0.507 · Q9 0.562 · Q1 0.596 · Q5 0.757 · Q3 0.98
 
 - [スマート農業・農業支援サービス事業 広域型（スマート技術体系転換加速化支援） 公募要領] 「複数の都道府県にわたり事業を実施する事業実施主体（北海道内で取り組む場合にあって は、北海道内の複数総合振興局・振興局で事業を実施する事業実施主体）が」
 
-- [ ] Uncited sentences (read by hand, target 0): __
+- [x] Uncited sentences (read by hand, target 0): **1** — 「これに加え、応募者・応募内容に関する他の共通要件（…）も満たす必要があります。」 is uncited.
 
 - req 1: `search_knowledge_base`
 - req 2: `final_result`
@@ -58,7 +92,7 @@ Q8 0.000 · Q7 0.254 · Q10 0.507 · Q9 0.562 · Q1 0.596 · Q5 0.757 · Q3 0.98
 - [デジタル化・AI導入補助金2026 複数者連携デジタル化・AI導入枠 公募要領] 「（（１）＋（２）の補助上限額は３，０００ 万円） （３）その他経費（事務費・専門家費 等） ⇒補助率は２／３以内、補助上限額 は（（１）＋（２））×１０パーセントに補」
 - [デジタル化・AI導入補助金2026 複数者連携デジタル化・AI導入枠 公募要領] 「助率２／３を乗じた額若しくは２００万 円のいずれか低い方」
 
-- [ ] Uncited sentences (read by hand, target 0): __
+- [x] Uncited sentences (read by hand, target 0): **0** — all three 経費区分 figures map onto the three citations.
 
 - req 1: `search_knowledge_base`
 - req 2: `final_result`
@@ -87,7 +121,7 @@ Q8 0.000 · Q7 0.254 · Q10 0.507 · Q9 0.562 · Q1 0.596 · Q5 0.757 · Q3 0.98
 
 - [デジタル化・AI導入補助金2026 セキュリティ対策推進枠 交付規程] 「補助率　　| １／２以内 ※小規模事業者は２／３以内」
 
-- [ ] Uncited sentences (read by hand, target 0): __
+- [x] Uncited sentences (read by hand, target 0): **0** — the single citation carries both 2／3 and 1／2.
 
 - req 1: `search_knowledge_base`
 - req 2: `final_result`
@@ -110,7 +144,7 @@ Q8 0.000 · Q7 0.254 · Q10 0.507 · Q9 0.562 · Q1 0.596 · Q5 0.757 · Q3 0.98
 - [スマート農業・農業支援サービス事業 別記1（スマート農業技術と産地の橋渡し支援） 公募要領] 「応募者が、同一の内容で、既に自力で事業を実施している場合又は既に国から他の補助金の 交付を受けている場合若しくは採択が決定している場合は、審査の対象から除外し、又は採択 の決定を取り消すこととします。」
 - [デジタル化・AI導入補助金2026 通常枠 交付規程] 「国及び中小機構その他の独立行政法人の他の補助金等と重複する事業については、 補助事業の対象として認めないものとする。」
 
-- [ ] Uncited sentences (read by hand, target 0): __
+- [x] Uncited sentences (read by hand, target 0): **1** — 「採択結果が未確定の段階での申請自体は差し支えありません」 is true (chunk 186, the なお sentence) but not cited; the model quoted only the first sentence of 第７.
 
 - req 1: `search_knowledge_base + search_knowledge_base`
 - req 2: `final_result`
@@ -157,7 +191,7 @@ Q8 0.000 · Q7 0.254 · Q10 0.507 · Q9 0.562 · Q1 0.596 · Q5 0.757 · Q3 0.98
 - [デジタル化・AI導入補助金2026 通常枠 交付規程] 「第２７条 事務局は、補助事業者が次の各号のいずれかに該当するときは、第１６条第１項の規定 に基づく交付決定の全部又は一部を取り消すことができる。」
 - [デジタル化・AI導入補助金2026 通常枠 交付規程] 「第３６条 事務局は、本規程に定める事項のほか、補助事業の円滑かつ適正な運営を行うために 必要な事項について別途定める。」
 
-- [ ] Uncited sentences (read by hand, target 0): __
+- [x] Uncited sentences (read by hand, target 0): **31 of 36** — structural, not a lapse: the answer enumerates ~36 article titles and 「最大5件」 caps citations at 5 (第1/9/16/27/36条). See the note below.
 
 - req 1: `retrieve_full_document`
 - req 2: `final_result`

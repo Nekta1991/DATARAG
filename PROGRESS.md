@@ -43,20 +43,47 @@ look up the id in `neon_auth."user"` by email), or `create_admin.py <email>` (wi
 Done when: the dashboard loads and the header shows corpus/model/spend. Then test: reload keeps the session,
 sign-out, a non-admin account gets 「管理者権限がありません」. None of this has been exercised with a real account yet.
 
-**3. Q3 fails: table quotes ($0 fix, then a ~$0.02 rerun, confirm first).** The model stitched table cells into a
-quote (「補助額 ５万円～１５０万円未満 補助額 １５０万円～４５０万円以下」). The source is a markdown table
-(`| 補助金申請額 | … |`, chunks 301/302/304), so gate 2 correctly rejected it, but the answer was right.
-Options: (a) prompt: "when quoting a table, copy one row verbatim, including the `|` separators";
-(b) a table-aware check in `verify_citations`, e.g. accept a quote whose `|`-split cells all
-occur in one table row of the same passage. Prefer (a) first, since it's cheaper and keeps the gate strict. Then
-`run_validation.py --paid --yes --only 3`.
+**3. Q3 table quotes — prompt fix APPLIED 2026-09-23 ($0). Needs a ~$0.018 rerun to confirm.**
+Diagnosed further than the previous handoff had it, and one premise there was wrong.
+The previous note blamed chunks 301/302/304 (`| 補助金申請額 | … |`, whose 補助率 cell Docling
+splits across two rows, so no quotable row exists). **Those are not what was retrieved.** Re-running
+the model's own query 「通常枠 補助額 補助率」 through retrieval ($0) gives:
 
-**4. Q6 fails: `no_citation` (~$0.024 rerun, confirm first).** answerable=true, 0 citations, 1,398 output
-tokens. Cause unknown: the declined draft wasn't kept then. **Now kept:** `QueryResult.draft`
-in run files. Rerun `--only 6`, read `rows[].draft` in the run file. Suspects: a long 取消 list
-vs. "max 5 citations", or quotes dropped. Q6 grading still reports both rules (A ✗ · B ✗ on run 1).
+| rank | chunk | source_doc | clean `\| 補助額 \|` row? |
+|---|---|---|---|
+| 1 | 316 | 通常枠 公募要領 | yes |
+| 2 | 871 | 通常枠 交付規程 | yes |
+| 3 | 318 | 通常枠 公募要領 | yes |
+| 5 | 317 | 通常枠 公募要領 | yes |
+
+So **retrieval was not at fault and a passing quote was available**: chunk 316's row normalizes to
+`|補助額|5万円~150万円未満|150万円~450万円以下|5万円~150万円|`, verified to satisfy `verify_citations`
+as-is. The model reformatted the table into prose instead — it pasted the label onto each column
+(「補助額 … 補助額 …」), and 「補助額」 is not even the header in 304 (that one reads 補助金申請額).
+Gate 2 was right to reject it.
+
+Fix (a) applied in `rag/agent.py` INSTRUCTIONS: quote a table row whole, `|` included, no stitching
+cells, no adding headers, no merging rows. Option (b) (a table-aware `verify_citations`) is **not
+needed** and would have loosened the gate for a problem the prompt causes.
+`scripts/test_gates.py` gained cases 9/10 (verbatim row → answered; the exact stitched string from
+run 1 → declined), so this is now covered for $0.
+**To confirm on the real model:** `run_validation.py --paid --yes --only 3` (~$0.018) — ask first.
+
+**4. Q6 `no_citation` — likely explained, and it changes what issue 5 is worth (~$0.024 rerun).**
+Reading run 1's answered responses by hand (issue 6, now done) turned up the probable cause.
+Q7 enumerates ~36 article titles and cites 5 — **31 of 36 claims uncited** — because
+「主張ごとに1件、最大5件」 contradicts itself on an enumeration: every title is a claim and 5 < 36.
+Q6 is the same shape (a 取消 list off the same 第27条 material) with 1,398 output tokens and *zero*
+citations — plausibly the same conflict resolved the other way: give up rather than cite 5 of N.
+If that holds, Q6 is not an evidence or retrieval failure, and the fix is the cap's wording
+(e.g. "on an enumeration, cite the article that introduces the list"), not the shared-rules line.
+Rerun `--only 6` and **read `rows[].draft` before spending on issue 5** — see
+`docs/validation_results.md` § "Uncited sentences".
 
 **5. Q6 rule A vs rule B (~$0.11, approved in plan; the commands may need `/permissions`).**
+⚠️ **Re-justify this before running.** Rules A and B both concern *which 枠 a shared rule covers*;
+neither touches the citation cap that issue 4 now points at. If the Q6 draft shows an uncited
+enumeration, this A/B run answers a question Q6 was not failing on.
 - `run_validation.py --paid --yes --only 6 --shared-rules` (rule B prompt, `CITE_SHARED_RULES=1`)
 - `run_validation.py --paid --yes --only 2,3 --shared-rules` (does the line make the model mix 枠 figures?)
 Background ($0 analysis, in `docs/validation_questions.md` Q6): the 取消し article is identical in the 通常, both インボイス and
