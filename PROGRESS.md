@@ -43,7 +43,7 @@ Known cost of staying unpaid, measured — put this in MANUAL before the demo:
 |---|---|
 | **API spend** | **$0.2741 / $5.00**, from the **Neon table `spend_ledger`** (`python -m rag.ledger --rows`). The JSONL file is kept as history but is no longer the source of truth |
 | Live site | **https://datarag-rho.vercel.app** (Vercel `web-gen-ai-teleapo/datarag`, CLI deploys from `web/`) |
-| Serving | Vercel UI → `/rag/api/*` proxy → `RAG_API_URL` = `https://bonsai-halogen-reprocess.ngrok-free.dev` (static ngrok domain) → uvicorn :8000 on this PC (GPU reranker). **The site is down unless uvicorn and `ngrok http 8000` both run here.** |
+| Serving | Vercel UI → `/rag/api/*` proxy → `RAG_API_URL` = `https://bonsai-halogen-reprocess.ngrok-free.dev` (static ngrok domain) → uvicorn :8000 on this PC (GPU reranker). **The site is down unless uvicorn and ngrok both run here** — as of 2026-09-23 both are up, serving today's code (Postgres ledger, threshold guard, backend still `local`/bge). |
 | Corpus | 14 docs / 1,025 chunks in Neon `production` (`br-icy-butterfly-b3grfw5x`) |
 | Retrieval | hybrid (vector 20 ∪ char-bigram BM25 10) → bge-reranker-v2-m3 on CUDA → top 5 |
 | Agent | `rag/agent.py`, `claude-sonnet-5`, effort low, strict output tool (2 requests per answer, confirmed). Gate 1 = score ≥ 0.3 **or** the question names a corpus document; gate 2 = verbatim-quote check |
@@ -62,11 +62,14 @@ need approval again: say what you're about to run and why, then stop.
 
 ### Open issues — resume here, in order
 
-**1. Restart uvicorn ($0), user action.** It was started before today's code changes, so the live
-site runs the OLD agent: no named-document gate (Q7-type questions decline at gate 1), and the
-non-strict output (3-request retries). Ctrl+C, then:
-`$env:PYTHONIOENCODING="utf-8"; .venv\Scripts\python.exe -m uvicorn rag.api:app --host 127.0.0.1 --port 8000`
-Done when: `curl https://datarag-rho.vercel.app/rag/api/health` → `"warm": true`.
+**1. ~~Restart uvicorn~~ — DONE 2026-09-23.** uvicorn and `ngrok http 8000 --url=bonsai-halogen-reprocess.ngrok-free.dev`
+are both running, health returns `"warm": true`. ⚠ They were started inside a Claude Code session, so they
+stop when it ends — start them in a normal terminal for anything long-lived.
+
+**A dead backend now says so.** It used to surface as 「API に接続できません: API error 404（/rag）」, because
+ngrok answers for an offline endpoint with its own HTTP 404 page and the proxy passed it straight through —
+which reads like a routing bug in the Next app. `web/app/rag/api/[...path]/route.ts` now returns 502 with the
+commands to fix it (verified live: `upstream 404, ERR_NGROK_3200`). Deployed to production 2026-09-23.
 
 **2. Create the admin ($0).** The user registers on the live site: `/auth/sign-in` → 「アカウントを新規登録」.
 There is no email verification, so they are signed in straight away. Then set the role, without handling the password: MCP
@@ -75,7 +78,7 @@ look up the id in `neon_auth."user"` by email), or `create_admin.py <email>` (wi
 Done when: the dashboard loads and the header shows corpus/model/spend. Then test: reload keeps the session,
 sign-out, a non-admin account gets 「管理者権限がありません」. None of this has been exercised with a real account yet.
 
-**3. Q3 table quotes — prompt fix APPLIED 2026-09-23 ($0). Needs a ~$0.018 rerun to confirm.**
+**3. Q3 table quotes — FIXED and CONFIRMED on the paid model 2026-09-23 ($0.0254). Closed.**
 Diagnosed further than the previous handoff had it, and one premise there was wrong.
 The previous note blamed chunks 301/302/304 (`| 補助金申請額 | … |`, whose 補助率 cell Docling
 splits across two rows, so no quotable row exists). **Those are not what was retrieved.** Re-running
@@ -99,29 +102,23 @@ cells, no adding headers, no merging rows. Option (b) (a table-aware `verify_cit
 needed** and would have loosened the gate for a problem the prompt causes.
 `scripts/test_gates.py` gained cases 9/10 (verbatim row → answered; the exact stitched string from
 run 1 → declined), so this is now covered for $0.
-**To confirm on the real model:** `run_validation.py --paid --yes --only 3` (~$0.018) — ask first.
+**Confirmed 2026-09-23:** the rerun passes, citing 「補助額 | ５万円～１５０万円未満 | １５０万円～４５０万円以下」 —
+the row copied whole, separators included. See `docs/validation_results.md`.
 
-**4. Q6 `no_citation` — likely explained, and it changes what issue 5 is worth (~$0.024 rerun).**
-Reading run 1's answered responses by hand (issue 6, now done) turned up the probable cause.
-Q7 enumerates ~36 article titles and cites 5 — **31 of 36 claims uncited** — because
-「主張ごとに1件、最大5件」 contradicts itself on an enumeration: every title is a claim and 5 < 36.
-Q6 is the same shape (a 取消 list off the same 第27条 material) with 1,398 output tokens and *zero*
-citations — plausibly the same conflict resolved the other way: give up rather than cite 5 of N.
-If that holds, Q6 is not an evidence or retrieval failure, and the fix is the cap's wording
-(e.g. "on an enumeration, cite the article that introduces the list"), not the shared-rules line.
-Rerun `--only 6` and **read `rows[].draft` before spending on issue 5** — see
-`docs/validation_results.md` § "Uncited sentences".
+**4. Q6 `no_citation` — GONE on the 2026-09-23 rerun ($0.0152). Closed, with one loose end.**
+Q6 now answers and passes, citing 通常枠 第27条 *and* 複数者連携 第25条 (4 citations, inside the cap).
+The citation-cap hypothesis from the uncited-sentence read is therefore **not confirmed**: the
+enumeration cited the introducing article plus specific items and stayed within 「最大5件」.
+Whether run 1's failure came from the old prompt or was run-to-run variance is unresolved, and one
+rerun cannot separate them. Not worth paying to find out — but if Q6 ever fails this way again,
+that is the thread to pull. Q7 still shows the tension (31 of 36 claims uncited), so the cap
+wording remains a real, if currently harmless, design smell.
 
-**5. Q6 rule A vs rule B (~$0.11, approved in plan; the commands may need `/permissions`).**
-⚠️ **Re-justify this before running.** Rules A and B both concern *which 枠 a shared rule covers*;
-neither touches the citation cap that issue 4 now points at. If the Q6 draft shows an uncited
-enumeration, this A/B run answers a question Q6 was not failing on.
-- `run_validation.py --paid --yes --only 6 --shared-rules` (rule B prompt, `CITE_SHARED_RULES=1`)
-- `run_validation.py --paid --yes --only 2,3 --shared-rules` (does the line make the model mix 枠 figures?)
-Background ($0 analysis, in `docs/validation_questions.md` Q6): the 取消し article is identical in the 通常, both インボイス and
-セキュリティ 交付規程 (第27条), but different in 複数者連携 (第25条), which is not in Q6's top 5. Both rules
-fail a 「全ての枠」 claim. The user decides A or B after seeing the results. Each run overwrites
-`docs/validation_results.md`; the raw files persist, so use `--regrade` for free.
+**5. ~~Q6 rule A vs rule B~~ — MOOT. Do not spend the ~$0.11.**
+The rerun passes **both** rule A and rule B under the *default* prompt, so the run that was meant
+to choose between them no longer has a question to answer. The `CITE_SHARED_RULES` flag and the
+grading stay in the code; if the choice ever matters again, the background analysis is in
+`docs/validation_questions.md` Q6.
 
 **6. Wrap up validation — DONE 2026-09-23 except the web mirror ($0).** Uncited sentences counted
 by hand and written into `docs/validation_results.md` (§ "Uncited sentences"): Q2/Q4 clean, Q1/Q5
