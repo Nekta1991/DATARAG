@@ -255,14 +255,35 @@ def _rerank_local_scored(query: str, hits: list[Hit]) -> list[Hit]:
     return sorted(hits, key=lambda h: h.rerank_score, reverse=True)
 
 
+TOKENIZER_FILE = config.ROOT / "rag" / "assets" / "voyage-3.5-tokenizer.json"
+
+
 @lru_cache(maxsize=1)
 def _voyage_tokenizer():
-    from huggingface_hub import snapshot_download
-    from transformers import AutoTokenizer
-    # voyage-3.5 ships no config.json, so from_pretrained(repo_id) fails
-    # offline; resolve the snapshot directory first.
-    return AutoTokenizer.from_pretrained(
-        snapshot_download("voyageai/voyage-3.5", local_files_only=True))
+    """Voyage's tokenizer, loaded from a file vendored into the repo.
+
+    Deliberately `tokenizers` (the small Rust library) and not `transformers`:
+    the budget below is needed wherever the voyage backend runs, including a
+    Vercel function, and transformers is a large dependency to carry for one
+    token count. The file is vendored rather than fetched because
+    `Tokenizer.from_pretrained` reaches huggingface.co at import time, which on
+    a cold serverless start is both slow and a third party in the request path.
+    """
+    from tokenizers import Tokenizer
+    if TOKENIZER_FILE.exists():
+        tok = Tokenizer.from_file(str(TOKENIZER_FILE))
+        tok.no_truncation()
+        return tok
+    # Local fallback: the HF cache the ingest path already populated.
+    from huggingface_hub import hf_hub_download
+    tok = Tokenizer.from_file(hf_hub_download("voyageai/voyage-3.5", "tokenizer.json",
+                                              local_files_only=True))
+    tok.no_truncation()
+    return tok
+
+
+def voyage_tokens(text: str) -> int:
+    return len(_voyage_tokenizer().encode(text, add_special_tokens=False).ids)
 
 
 def budget_pool(hits: list[Hit], budget: int) -> list[Hit]:
@@ -279,13 +300,12 @@ def budget_pool(hits: list[Hit], budget: int) -> list[Hit]:
     skipped while shorter, lower-priority ones still get in. That is deliberate:
     a 3,000-token table should not evict four whole candidates.
     """
-    tok = _voyage_tokenizer()
     inf = float("inf")
     order = sorted(hits, key=lambda h: (min(h.vector_rank or inf, h.lexical_rank or inf),
                                         h.vector_rank or inf))
     kept, used = [], 0
     for h in order:
-        n = len(tok(h.content, add_special_tokens=False)["input_ids"])
+        n = voyage_tokens(h.content)
         if used + n <= budget:
             kept.append(h)
             used += n
