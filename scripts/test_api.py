@@ -66,9 +66,11 @@ def main():
             # this exact question and _search caches per query, so the tool
             # call is a cache hit - which is what keeps a stub run at zero
             # Voyage requests beyond the one gate 1 makes.
-            want = ["run.start", "embed.done", "vector.done", "bm25.done", "rerank.done",
-                    "gate1", "agent.start", "agent.tool_call", "agent.tool_result",
-                    "gate2", "answer", "usage", "done"]
+            # run.id comes first so the client can cancel or confirm from the
+            # very start, rather than only once gate 1 has reported.
+            want = ["run.id", "run.start", "embed.done", "vector.done", "bm25.done",
+                    "rerank.done", "gate1", "agent.start", "agent.tool_call",
+                    "agent.tool_result", "gate2", "answer", "usage", "done"]
             check("stream carries every stage in order", names == want)
             d = dict(evs)
             check("gate1 passes at 0.8907", d["gate1"]["pass"] and d["gate1"]["top_score"] == 0.8907)
@@ -80,6 +82,13 @@ def main():
             print("      events:", " -> ".join(names))
             check("off-topic stops at gate 1, no agent", "agent.start" not in names
                   and dict(events(r.text))["answer"]["reason"] == "score_gate")
+            # Two retrieval passes, not one: an about-to-be-declined question
+            # gets a second chance with its interrogative scaffolding stripped
+            # (rag.retrieval.normalize_query). It costs an extra Voyage request
+            # only here, on the path that was going to be free anyway, and it
+            # did not save this question - which is the point of the negative.
+            check("declining retries once with the normalized question",
+                  names.count("rerank.done") == 2, f"{names.count('rerank.done')} rerank passes")
         finally:
             app.dependency_overrides.clear()
 

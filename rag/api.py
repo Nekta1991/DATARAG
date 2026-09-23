@@ -19,12 +19,13 @@ import asyncio
 import json
 import os
 import threading
+import uuid
 import time
 from contextlib import asynccontextmanager
 from functools import lru_cache
 
 import jwt
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
@@ -107,6 +108,22 @@ def require_admin(authorization: str | None = Header(default=None)) -> dict:
 class QueryIn(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     stub: bool = Field(default=False, description="free run: stubbed model, real retrieval")
+    confirm: bool = Field(
+        default=True,
+        description="True runs straight through. False pauses after gate 1 - which is "
+                    "free - and waits for POST /api/confirm before spending anything.")
+
+
+class ConfirmIn(BaseModel):
+    run_id: str
+    proceed: bool
+
+
+# Runs waiting for a confirmation, and runs asked to stop. Keyed by run_id.
+# A plain dict is enough because /api/query already serves one query at a time
+# (_busy); if that ever changes these need a lock.
+_pending: dict[str, dict] = {}
+CONFIRM_TIMEOUT_SEC = float(os.getenv("CONFIRM_TIMEOUT_SEC", "180"))
 
 
 @app.get("/api/health")
@@ -124,18 +141,54 @@ def status(user: dict = Depends(require_admin)):
             "budget_usd": A.BUDGET_USD, "busy": _busy.locked(), "user": user["email"]}
 
 
+@app.post("/api/confirm")
+def confirm(body: ConfirmIn, user: dict = Depends(require_admin)):
+    """Release, or abandon, a run paused at the confirmation point.
+
+    Also the cancel button's endpoint: `proceed=false` sets the same flag the
+    client disconnecting would, so a run can be stopped whether or not it is
+    currently waiting.
+    """
+    state = _pending.get(body.run_id)
+    if state is None:
+        raise HTTPException(404, "no such run (it may have already finished)")
+    if not body.proceed:
+        state["cancelled"].set()
+    state["proceed"] = body.proceed
+    state["decided"].set()
+    return {"ok": True, "run_id": body.run_id, "proceed": body.proceed}
+
+
 @app.post("/api/query")
-async def query(body: QueryIn, user: dict = Depends(require_admin)):
+async def query(request: Request, body: QueryIn, user: dict = Depends(require_admin)):
     if not _busy.acquire(blocking=False):
         raise HTTPException(429, "a query is already running")
 
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue()
     t0 = time.time()
+    run_id = uuid.uuid4().hex
+    state = {"cancelled": threading.Event(), "decided": threading.Event(), "proceed": True}
+    _pending[run_id] = state
 
     def emit(event: str, data: dict) -> None:
         payload = {**data, "t_ms": int((time.time() - t0) * 1000)}
         loop.call_soon_threadsafe(queue.put_nowait, (event, payload))
+
+    def wait_for_confirmation(top_score: float) -> bool:
+        """Pause between the free part and the paid part.
+
+        Everything before this point - retrieval, both reranks, gate 1 - costs
+        nothing, so a question abandoned here costs exactly nothing. That is
+        the whole value of asking here rather than after.
+        """
+        emit("confirm.required", {"run_id": run_id, "top_score": round(top_score, 4),
+                                  "estimated_usd": 0.03, "max_usd": round(A.WORST_CASE_USD, 2),
+                                  "timeout_sec": CONFIRM_TIMEOUT_SEC})
+        if not state["decided"].wait(timeout=CONFIRM_TIMEOUT_SEC):
+            emit("confirm.timeout", {"after_sec": CONFIRM_TIMEOUT_SEC})
+            return False
+        return bool(state["proceed"]) and not state["cancelled"].is_set()
 
     def work() -> None:
         try:
@@ -147,19 +200,38 @@ async def query(body: QueryIn, user: dict = Depends(require_admin)):
                 # retrieval. Still $0 and no extra Voyage request (the search
                 # is a cache hit on gate 1's). See rag.agent.stub_model.
                 model = A.stub_model()
-            A.answer_question(body.question, model=model, emit=emit, source="api")
+            # Confirmation only guards spending, so a stub run never asks.
+            need_confirm = (not body.stub) and (not body.confirm)
+            A.answer_question(body.question, model=model, emit=emit, source="api",
+                              cancelled=state["cancelled"],
+                              confirm=wait_for_confirmation if need_confirm else None)
             emit("done", {"ok": True})
         except Exception as e:  # already reported as an `error` event where it arose
             emit("done", {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"})
         finally:
+            _pending.pop(run_id, None)
             _busy.release()
             loop.call_soon_threadsafe(queue.put_nowait, None)
 
     threading.Thread(target=work, daemon=True).start()
 
     async def stream():
-        while (item := await queue.get()) is not None:
-            event, data = item
-            yield {"event": event, "data": json.dumps(data, ensure_ascii=False)}
+        # run.id first, so the client can cancel or confirm from the very start
+        # rather than only once gate 1 has reported.
+        yield {"event": "run.id", "data": json.dumps({"run_id": run_id})}
+        try:
+            while (item := await queue.get()) is not None:
+                if await request.is_disconnected():
+                    # The browser went away. Tell the worker, which stops at
+                    # the next checkpoint; anything already sent to Claude is
+                    # billed regardless and is settled normally.
+                    state["cancelled"].set()
+                    state["decided"].set()
+                    break
+                event, data = item
+                yield {"event": event, "data": json.dumps(data, ensure_ascii=False)}
+        finally:
+            state["cancelled"].set()
+            state["decided"].set()
 
     return EventSourceResponse(stream())

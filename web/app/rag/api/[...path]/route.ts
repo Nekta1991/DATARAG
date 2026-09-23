@@ -6,7 +6,7 @@
 // verifies the Neon Auth JWT and role=admin itself.
 
 const UPSTREAM = (process.env.RAG_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
-const ALLOWED = new Set(["health", "status", "query"]);
+const ALLOWED = new Set(["health", "status", "query", "confirm"]);
 
 // A paid query streams for ~20-60 s; the agent's own hard limits end it sooner.
 export const maxDuration = 300;

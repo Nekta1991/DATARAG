@@ -43,6 +43,9 @@
   --t-fail: #ef8a8a;
   --t-agent: #f6a06b;
   --t-cost: #c0b6a5;
+  /* Waiting on the user, or stopped by them: neither success nor error.
+     Amber so a cancelled run is not read as a failed one. */
+  --t-warn: #e6c374;
 
   --font-heading: var(--nf-caprasimo), system-ui, sans-serif;
   --font-body: var(--nf-figtree), var(--nf-noto), system-ui, sans-serif;

@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } fr
 import { authClient } from "@/lib/auth/client";
 import s from "./dashboard.module.css";
 
-type Tone = "info" | "pass" | "fail" | "agent" | "cost";
+type Tone = "info" | "pass" | "fail" | "agent" | "cost" | "warn";
 type Line = { tag: string; tone: Tone; text: string; dur: string };
 type Candidate = {
   rank: number; vector_rank: number | null; lexical_rank: number | null;
@@ -29,7 +29,10 @@ type EventData = Partial<{
   input_tokens: number; cache_read_tokens: number; output_tokens: number; cost_usd: number;
   ledger_total_usd: number; budget_usd: number; type: string; message: string; t_ms: number;
   candidates: Candidate[]; answer: string; rejected_quotes: string[];
-  via: "score" | "named_doc" | null; named_docs: string[];
+  via: "score" | "named_doc" | "normalized" | null; named_docs: string[];
+  normalized_score: number | null;
+  run_id: string; estimated_usd: number; max_usd: number; timeout_sec: number;
+  after_sec: number;
 }>;
 
 // Real questions from docs/validation_questions.md. A chip fills the input;
@@ -80,9 +83,21 @@ function toLine(ev: string, d: EventData): Line | null {
       // whatever the score (rag/documents.py named_documents).
       const text = !d.pass ? `${cmp} → DECLINE (score_gate)`
         : d.via === "named_doc" ? `${cmp} · names ${(d.named_docs ?? []).join(", ")} → PASS (named_doc)`
+        // via=normalized: the question scored too low as asked, and cleared
+        // the gate once its interrogative scaffolding was stripped.
+        : d.via === "normalized" ? `${cmp} · 質問文を正規化して再判定 → PASS (normalized)`
         : `${cmp} → PASS`;
       return { tag: "GATE 1", tone: d.pass ? "pass" : "fail", text, dur: "" };
     }
+    case "confirm.required":
+      return { tag: "CONFIRM", tone: "warn", dur: "",
+        text: `実行の確認待ち — ここまで $0、実行で約 $${Number(d.estimated_usd).toFixed(2)}` };
+    case "confirm.timeout":
+      return { tag: "CANCEL", tone: "warn", text: `${d.after_sec}秒 応答がないため中止しました · $0`, dur: "" };
+    case "cancelled":
+      return { tag: "CANCEL", tone: "warn", dur: "",
+        text: d.reason === "not_confirmed" ? "実行されませんでした · $0"
+            : "中止されました（モデル呼び出し前） · $0" };
     case "agent.start": return { tag: "AGENT", tone: "agent", text: `${d.model} · effort ${d.effort}`, dur: "" };
     case "agent.tool_call": return { tag: "TOOL", tone: "agent", text: `${d.tool}(${JSON.stringify(Object.values(d.args ?? {})[0] ?? "")})`, dur: "" };
     case "agent.tool_result":
@@ -124,6 +139,12 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
   const [gate, setGate] = useState<{ top: number; threshold: number } | null>(null);
   const [cost, setCost] = useState<number | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  // Usage guard. A paid run pauses after gate 1 - which is free - and waits
+  // here, so an accidental submit costs exactly $0. `pending` holds the run
+  // waiting for a decision; `abort` cancels a run already under way.
+  const [pending, setPending] = useState<{ run_id: string; top_score: number; estimated_usd: number } | null>(null);
+  const runIdRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   const token = useCallback(async () => {
@@ -164,12 +185,18 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
     if (running || !question.trim()) return;
     setRunning(true);
     setLines([]); setCandidates([]); setAnswer(null); setMeta(""); setPool(""); setElapsed("");
-    setGate(null); setCost(null); setRunError(null);
+    setGate(null); setCost(null); setRunError(null); setPending(null);
+    const ac = new AbortController();
+    abortRef.current = ac;
+    runIdRef.current = null;
     try {
       const r = await fetch(`${apiUrl}/api/query`, {
         method: "POST",
+        signal: ac.signal,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-        body: JSON.stringify({ question: question.trim(), stub: !paid }),
+        // confirm:false asks the server to stop after gate 1 and wait. Only
+        // for paid runs - a stub costs nothing, so pausing it is just friction.
+        body: JSON.stringify({ question: question.trim(), stub: !paid, confirm: !paid }),
       });
       if (!r.ok || !r.body) {
         const msg = r.status === 429 ? "別の質問を処理中です。" : r.status === 403 ? "管理者権限がありません。" : `API error ${r.status}`;
@@ -192,6 +219,12 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
           }
           if (!data) continue;
           const d = JSON.parse(data) as EventData;
+          if (ev === "run.id") { runIdRef.current = d.run_id ?? null; continue; }
+          if (ev === "confirm.required") {
+            setPending({ run_id: d.run_id ?? "", top_score: Number(d.top_score),
+                         estimated_usd: Number(d.estimated_usd) });
+          }
+          if (ev === "cancelled" || ev === "confirm.timeout") setPending(null);
           if (ev === "rerank.done") setCandidates(d.candidates ?? []);
           if (ev === "bm25.done") setPool(`pool ${d.pool} 件 · BM25 のみが発見 ${d.lexical_only} 件`);
           if (ev === "answer") setAnswer(d as unknown as Answer);
@@ -207,13 +240,44 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
         }
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setLines((xs) => [...xs, { tag: "ERROR", tone: "fail", text: msg, dur: "" }]);
-      setRunError(msg);
+      // An abort is the user's own doing, not a failure to report as one.
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setLines((xs) => [...xs, { tag: "CANCEL", tone: "warn", text: "利用者により中止されました", dur: "" }]);
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        setLines((xs) => [...xs, { tag: "ERROR", tone: "fail", text: msg, dur: "" }]);
+        setRunError(msg);
+      }
     } finally {
       setRunning(false);
+      setPending(null);
+      abortRef.current = null;
       applyStatus(await fetchStatus());
     }
+  }
+
+  /** Answer the server's confirmation prompt, or stop a run already going.
+   *
+   * Cancelling is only free before the first model request - that is exactly
+   * where `confirm.required` pauses. Pressing 中止 later still stops the run
+   * and releases the budget reservation, but a request already sent to Claude
+   * is billed, so the console reports whatever it actually cost. */
+  async function decide(proceed: boolean) {
+    const runId = runIdRef.current ?? pending?.run_id;
+    setPending(null);
+    if (runId) {
+      try {
+        await fetch(`${apiUrl}/api/confirm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
+          body: JSON.stringify({ run_id: runId, proceed }),
+        });
+      } catch {
+        // The run may already have finished; the stream is the source of truth.
+      }
+    }
+    // Abort only after telling the server, or it never learns to stop working.
+    if (!proceed) abortRef.current?.abort();
   }
 
   async function signOut() {
@@ -269,7 +333,37 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
                       disabled={running || !question.trim() || blockedByBudget || !!apiError}>
                 {running ? "実行中…" : "検索して回答"}
               </button>
+              {running && (
+                <button type="button" className={`btn ${s.qsub}`} onClick={() => decide(false)}>
+                  中止
+                </button>
+              )}
             </form>
+
+            {/* The usage guard. Retrieval and both gates have already run, for
+                free; nothing has been sent to Claude yet. Declining here costs
+                exactly $0, which is the reason the pause is at this point. */}
+            {pending && (
+              <div role="alertdialog" aria-live="assertive" className="card" style={{ marginTop: 12 }}>
+                <p style={{ margin: "0 0 8px", fontWeight: 600 }}>
+                  有償で実行しますか？
+                </p>
+                <p style={{ margin: "0 0 4px", fontSize: 13 }}>
+                  検索は完了しました（関連度 {pending.top_score.toFixed(4)}）。ここまでは無料です。
+                </p>
+                <p style={{ margin: "0 0 12px", fontSize: 13 }}>
+                  実行すると Claude API を呼び出し、約 ${pending.estimated_usd.toFixed(2)}（上限 ${WORST_CASE_USD.toFixed(2)}）が課金されます。
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className="btn btn-primary" onClick={() => decide(true)}>
+                    実行する（約 ${pending.estimated_usd.toFixed(2)}）
+                  </button>
+                  <button type="button" className="btn" onClick={() => decide(false)}>
+                    やめる（$0）
+                  </button>
+                </div>
+              </div>
+            )}
             {blockedByBudget && (
               <p role="alert" className="blocked">
                 <Warn />予算上限 ${status?.budget_usd.toFixed(2)} を超える可能性があるため実行できません（最悪ケース ${WORST_CASE_USD.toFixed(2)}／問）。本番モードをオフにするとスタブで無料実行できます。

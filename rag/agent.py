@@ -421,7 +421,8 @@ def _finish(deps: Deps, r: QueryResult) -> QueryResult:
 
 
 def answer_question(question: str, model=None, emit=None,
-                    source: str = "cli") -> QueryResult:
+                    source: str = "cli", cancelled=None,
+                    confirm=None) -> QueryResult:
     """model=None -> the real, paid Claude model. Pass a pydantic-ai test
     model to exercise the whole pipeline for free. `emit(event, data)`
     receives each step as it happens (the dashboard console)."""
@@ -467,6 +468,26 @@ def answer_question(question: str, model=None, emit=None,
                                          [], [], top, {}, 0.0))
 
     paid = model is None
+
+    # Last free moment. Everything above - retrieval, both reranks, gate 1 -
+    # cost nothing, so a question abandoned here costs nothing either. That is
+    # the only point where cancelling genuinely saves money: once a request is
+    # in flight it is billed whatever the client does afterwards.
+    def _cancelled(reason: str) -> QueryResult:
+        deps.say("cancelled", {"reason": reason, "top_score": round(top, 4)})
+        return _finish(deps, QueryResult(question, "declined", "cancelled", DECLINE,
+                                         [], deps.tool_calls, top, {}, 0.0))
+
+    if cancelled is not None and cancelled.is_set():
+        return _cancelled("client_disconnected")
+    # Asking is the caller's decision, not something inferred from `paid` here.
+    # Tying it to `paid` made the guard untestable - a stub run sets paid=False,
+    # so the callback could never fire and the test that caught this asserted
+    # a code path that could not execute. rag/api.py supplies the callback only
+    # for runs that will actually spend.
+    if confirm is not None and not confirm(top):
+        return _cancelled("not_confirmed")
+
     # Reserve the worst case before the call, not after. Reading a total and
     # then deciding is a race two concurrent runs can both win; the reservation
     # makes the decision and the write one transaction. See rag/ledger.py.
@@ -477,6 +498,15 @@ def answer_question(question: str, model=None, emit=None,
         except ledger.BudgetExceeded as e:
             deps.say("error", {"type": "BudgetGuard", "message": str(e)})
             raise RuntimeError(str(e)) from e
+
+    # Confirmation can take as long as a person takes, so re-check: the client
+    # may have gone away while the reservation was being taken. Released, not
+    # settled, because nothing has been sent yet - this is the one case where
+    # releasing is provably correct.
+    if cancelled is not None and cancelled.is_set():
+        if reservation is not None:
+            ledger.release(reservation.id, "cancelled before the request was sent")
+        return _cancelled("client_disconnected")
 
     agent = build_agent()
     deps.say("agent.start", {"model": MODEL if paid else "stub", "effort": EFFORT})

@@ -101,6 +101,7 @@
 .t_fail { color: var(--t-fail); }
 .t_agent { color: var(--t-agent); }
 .t_cost { color: var(--t-cost); }
+.t_warn { color: var(--t-warn); }
 .msFail { color: var(--t-fail); }
 .idleNote { font-family: var(--mono); font-size: 12.5px; color: var(--t-cost); margin-bottom: 12px; }
 .pipe { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12.5px; color: rgba(220, 211, 196, .45); }
