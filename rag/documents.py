@@ -30,6 +30,7 @@ from functools import lru_cache
 import psycopg
 
 from rag import config  # noqa: F401  - loads .env, pins HF_HOME
+from rag.retrieval import voyage_tokens
 
 MAX_TOKENS = int(os.getenv("FULLDOC_MAX_TOKENS", "20000"))
 # Budgeting is done in Voyage tokens (tokenizer cached locally, no network),
@@ -37,7 +38,6 @@ MAX_TOKENS = int(os.getenv("FULLDOC_MAX_TOKENS", "20000"))
 # documents and capped prefixes: Claude/Voyage = 1.215-1.364. 1.40 leaves a
 # margin over the worst case. Characters are no proxy - 1.59 to 2.82 per token.
 CLAUDE_PER_VOYAGE = float(os.getenv("CLAUDE_PER_VOYAGE_TOKEN", "1.40"))
-TOKENIZER_ID = "voyageai/voyage-3.5"
 
 _SECTION = re.compile(r"(?m)^(?=## )")
 
@@ -68,21 +68,17 @@ class FullDocument:
                 + "\n".join(f"- {h}" for h in self.omitted_headings))
 
 
-@lru_cache(maxsize=1)
-def _tok():
-    from huggingface_hub import snapshot_download
-    from transformers import AutoTokenizer
-    # Load from the cached snapshot directory, offline. By repo id,
-    # local_files_only fails: voyage-3.5 ships no config.json, and offline
-    # AutoTokenizer insists on one before reading tokenizer_config.json.
-    tok = AutoTokenizer.from_pretrained(
-        snapshot_download(TOKENIZER_ID, local_files_only=True))
-    tok.model_max_length = 10**9    # counting only; nothing is fed to a model
-    return tok
-
-
 def _claude_tokens(text: str) -> int:
-    return int(len(_tok().encode(text, add_special_tokens=False)) * CLAUDE_PER_VOYAGE)
+    # Counts with Voyage's tokenizer and scales, rather than Claude's own:
+    # measured 1.215-1.364 Claude tokens per Voyage token on this corpus, and
+    # Anthropic's count_tokens is a network round trip per call.
+    #
+    # Shares rag.retrieval's vendored tokenizer instead of loading its own
+    # through transformers. This runs on the serving path - retrieve_full_
+    # document caps its output by token count - so a transformers import here
+    # would pull the whole library into a serverless bundle that otherwise
+    # needs none of it.
+    return int(voyage_tokens(text) * CLAUDE_PER_VOYAGE)
 
 
 def _heading(section: str) -> str | None:
