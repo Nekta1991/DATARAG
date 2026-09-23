@@ -29,6 +29,7 @@ import json
 import pathlib
 import sys
 import time
+from functools import lru_cache
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
@@ -39,21 +40,47 @@ from rag import retrieval as R
 CACHE = pathlib.Path(__file__).resolve().parent.parent / "data" / "rerank_compare.json"
 VOYAGE_RERANK_MODEL = "rerank-2.5"
 
-# Unpaid tier: 3 requests/min AND 10,000 tokens/min. Measured here, the token
-# ceiling is the binding one, not the request ceiling: reranking a ~25-chunk
-# pool costs 8,600-9,300 tokens, so a single rerank spends ~90% of the minute.
-# Spacing by request count alone hits RateLimitError immediately - the first
-# attempt at this lost cases 2-5 that way. So the limiter tracks a rolling
-# 60-second window of both requests and tokens, and waits for whichever is short.
+# Unpaid tier: 3 requests/min AND 10,000 tokens/min. The token ceiling is the
+# binding one: reranking a candidate pool for this corpus costs 2,900-10,300
+# tokens, so a single rerank can spend the entire minute on its own. Spacing by
+# request count alone hits RateLimitError immediately. The limiter therefore
+# tracks a rolling 60-second window of both requests and tokens and waits for
+# whichever is short.
 TPM_LIMIT = 10_000
 RPM_LIMIT = 3
-# Measured against Voyage's own reported totals on this corpus: the rerank
-# payload runs 1.28-1.77 chars per token (mean ~1.4), not the 1.2 the ingest
-# path measured for embeddings. 1.4 under-predicts nothing important here and
-# over-predicting only costs waiting.
-CHARS_PER_TOKEN = 1.4
+# Voyage's accounting is stricter than a naive 60-second rolling window.
+# Measured: 8,651 and 9,272-token requests succeeded with a clear window, but
+# 9,400 and 9,530-token ones were refused after waiting out 61 seconds. Rather
+# than model their bookkeeping, anything large simply waits for a demonstrably
+# empty window plus a margin. Slower, and it stops losing cases to retries.
+WINDOW_SEC = 75
+LARGE_REQUEST = 6_000
+# Estimating the payload from character count does not work on this corpus and
+# the first version of this script got it badly wrong. Chars-per-token ranges
+# from ~1.3 on dense prose to ~2.8 overall, because the markdown tables are
+# padded with alignment spaces that cost characters and almost no tokens
+# (collapsing every run of spaces drops 38% of the characters and 2.2% of the
+# tokens). A chars/1.4 estimate predicted 44,020 tokens for a pool that is
+# really 9,430 - which looked exactly like "the corpus is too big to rerank"
+# and was not true. So: count with Voyage's own tokenizer, which is already
+# cached locally for the ingest path and costs nothing to call.
 
 _window: list[tuple[float, int]] = []   # (timestamp, tokens charged)
+
+
+@lru_cache(maxsize=1)
+def _tokenizer():
+    from huggingface_hub import snapshot_download
+    from transformers import AutoTokenizer
+    # voyage-3.5 ships no config.json, so from_pretrained(repo_id) fails
+    # offline; resolve the snapshot directory first (MANUAL §5).
+    return AutoTokenizer.from_pretrained(
+        snapshot_download("voyageai/voyage-3.5", local_files_only=True))
+
+
+def count_tokens(texts: list[str]) -> int:
+    tok = _tokenizer()
+    return sum(len(tok(t, add_special_tokens=False)["input_ids"]) for t in texts)
 
 
 def _throttle(tokens: int) -> None:
@@ -66,16 +93,20 @@ def _throttle(tokens: int) -> None:
     """
     while True:
         now = time.time()
-        _window[:] = [(t, n) for t, n in _window if now - t < 60]
+        _window[:] = [(t, n) for t, n in _window if now - t < WINDOW_SEC]
         used = sum(n for _, n in _window)
-        if len(_window) < RPM_LIMIT and used + tokens <= TPM_LIMIT:
+        # A large request needs the whole minute to itself; a small one only
+        # needs to fit beside what is already in flight.
+        ok = (not _window) if tokens >= LARGE_REQUEST else (
+            len(_window) < RPM_LIMIT and used + tokens <= TPM_LIMIT)
+        if ok:
             return
         if tokens > TPM_LIMIT and not _window:
             print(f"      over-ceiling: this request alone needs ~{tokens} tokens "
                   f"of a {TPM_LIMIT}/min budget - sending it to see what happens")
             return
-        oldest = min(t for t, _ in _window) if _window else now
-        wait = max(1.0, 61 - (now - oldest))
+        oldest = min(t for t, _ in _window)
+        wait = max(1.0, WINDOW_SEC + 1 - (now - oldest))
         print(f"      throttle: {len(_window)} req / {used} tok in window, "
               f"need {tokens} - waiting {wait:.0f}s")
         time.sleep(wait)
@@ -87,6 +118,25 @@ def spaced(fn, *a, tokens: int = 100, **kw):
         return fn(*a, **kw)
     finally:
         _window.append((time.time(), tokens))
+
+
+def cold_start_wait() -> None:
+    """The rolling window lives in this process; Voyage's does not.
+
+    A re-run starting seconds after the previous one stopped begins with an
+    empty window and immediately spends ~9,500 tokens that Voyage still counts
+    against the last minute - which is how the first case of a re-run kept
+    dying on RateLimitError while looking perfectly within budget. The cache
+    file's mtime dates the last request closely enough to wait it out.
+    """
+    if not CACHE.exists():
+        return
+    idle = time.time() - CACHE.stat().st_mtime
+    if idle < WINDOW_SEC + 1:
+        wait = WINDOW_SEC + 1 - idle
+        print(f"last run ended {idle:.0f}s ago; waiting {wait:.0f}s for Voyage's "
+              f"own token window to clear")
+        time.sleep(wait)
 
 
 # -- the calibration set ----------------------------------------------------
@@ -147,7 +197,7 @@ def measure(cache: dict) -> dict:
 
             docs = [h.content for h in hits]
             row["rerank_chars"] = sum(len(d) for d in docs)
-            est = int(row["rerank_chars"] / CHARS_PER_TOKEN) + 200
+            est = count_tokens(docs) + 100   # + the query and framing
             res = spaced(client.rerank, query=q, documents=docs,
                          model=VOYAGE_RERANK_MODEL, tokens=est)
             order = [(hits[r.index].chunk_id, r.relevance_score) for r in res.results]
@@ -220,6 +270,7 @@ def main() -> int:
         n = sum(1 for c in CASES if cache.get(str(c[0]), {}).get("voyage_top") is None)
         print(f"measuring {n} of {len(CASES)} cases (~{n:.0f}-{n * 1.5:.0f} min: one "
               f"rerank is ~9k of the 10k-token minute), $0")
+        cold_start_wait()
         cache = measure(cache)
     return report(cache)
 

@@ -37,18 +37,32 @@ from rag import retrieval as R
 ALLOWED_ORIGINS = [o.strip() for o in
                    os.getenv("API_ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
 
-# One query at a time: the reranker shares one GPU, and the budget guard reads
-# the ledger before a run - two concurrent runs could both pass it.
+# One query at a time, per process. This used to be what kept two concurrent
+# runs from both passing the budget guard; it is not any more - the ledger
+# reservation does that in Postgres, across processes and instances, because a
+# threading.Lock means nothing to a second serverless instance (rag/ledger.py).
+#
+# It stays for two smaller reasons that are still true locally: the bge
+# reranker shares one GPU, and RERANK_BACKEND=voyage gets 10,000 tokens a
+# minute against ~9,500 per query, so a second concurrent query would fail on
+# a rate limit rather than queue. It is a courtesy, no longer a guarantee.
 _busy = threading.Lock()
 _warm = {"ready": False, "seconds": None}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Measured: reranker cold load 113 s, BM25 build 2.7 s. Pay both here,
-    # never on a user's first query.
+    # Pay every cold cost here, never on a user's first query. Measured:
+    # bge cold load 113 s, BM25 build 2.3 s, chunk fetch 2.1 s.
+    #
+    # Only the bge load is worth 113 s of startup, and only the local backend
+    # has it - RERANK_BACKEND=voyage has no weights to load, so warming it
+    # would just burn a rerank request against a 10k-token minute. The BM25
+    # index is built either way: it is in-process, so a serverless instance
+    # rebuilds it per cold start (~4.4 s total, 1.9 MB resident).
     t = time.time()
-    await asyncio.to_thread(R._reranker)
+    if R.RERANK_BACKEND == "local":
+        await asyncio.to_thread(R._reranker)
     await asyncio.to_thread(R._bm25_index)
     await asyncio.to_thread(A.build_agent)
     _warm.update(ready=True, seconds=round(time.time() - t, 1))
