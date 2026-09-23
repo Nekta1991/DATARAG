@@ -55,14 +55,43 @@ from pydantic_ai.usage import UsageLimits
 from rag import config
 from rag import ledger
 from rag.documents import document_catalog, named_documents, retrieve_full_document
-from rag.retrieval import (Hit, embed_query, hybrid_candidates, rerank,
-                           reranker_name, TOP_N)
+from rag.retrieval import (Hit, RERANK_BACKEND, embed_query, hybrid_candidates,
+                           rerank, reranker_name, TOP_N)
 
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 EFFORT = os.getenv("GENERATION_EFFORT", "low")
 MAX_OUTPUT = int(os.getenv("GENERATION_MAX_TOKENS", "2048"))
 THRESHOLD = float(os.getenv("RERANK_SCORE_THRESHOLD", "0.3"))
 BUDGET_USD = float(os.getenv("BUDGET_USD", "5.00"))
+
+# Measured floors per backend: the lowest score gate 1 must still stop.
+# bge scores off-topic questions 0.0000-0.0033; Voyage scores the same ones
+# 0.2773-0.3652. A threshold below the backend's floor is not a gate.
+_MIN_SENSIBLE_THRESHOLD = {"local": 0.01, "voyage": 0.40}
+
+
+def _check_threshold() -> None:
+    """Refuse a threshold that silently disables gate 1.
+
+    This is the one misconfiguration in the project that costs money without
+    failing: carry the local 0.3 over to RERANK_BACKEND=voyage and every
+    off-topic question clears the gate and reaches Claude as a paid call,
+    while the console still prints a score and the word `pass`. Measured
+    2026-09-23, see docs/rerank_comparison.md. Refusing at import is cheaper
+    than discovering it in the ledger.
+    """
+    floor = _MIN_SENSIBLE_THRESHOLD.get(RERANK_BACKEND)
+    if floor is not None and THRESHOLD < floor:
+        raise RuntimeError(
+            f"RERANK_SCORE_THRESHOLD={THRESHOLD} is below the measured floor "
+            f"({floor}) for RERANK_BACKEND={RERANK_BACKEND!r}: off-topic "
+            f"questions would pass gate 1 and be billed. Use 0.42 for voyage, "
+            f"0.3 for local (docs/rerank_comparison.md). Set "
+            f"RERANK_THRESHOLD_OVERRIDE=1 if this is deliberate.")
+
+
+if os.getenv("RERANK_THRESHOLD_OVERRIDE") != "1":
+    _check_threshold()
 
 DECLINE = "この情報からは判断できません"
 

@@ -93,13 +93,58 @@ is unharmed either way. It is answer quality that degrades.
 
 ## Finding 4 — the threshold
 
-*(measurement in progress — `scripts/compare_rerankers.py --report` prints the
-current table, and this section is filled in from it)*
+Both backends scored over the identical 5,000-token budgeted pool, so the
+columns are comparable. **The bge column is therefore not the production local
+configuration**, which reranks the full pool and has no budget — it is bge
+restricted to Voyage's pool so the comparison means something.
 
-The shape is already clear from the cases measured: Voyage's scale is
-compressed with a high floor. It scores an off-topic question ~0.33 where bge
-scores 0.0000, so **carrying `RERANK_SCORE_THRESHOLD=0.3` across would turn
-gate 1 into a pass-through** and bill the paid model for 明日の東京の天気.
+| id | expect | bge | voyage | note |
+|---|---|---|---|---|
+| 1 | must_pass | 0.5955 | 0.6953 | clause inside a paragraph |
+| 2 | must_pass | — | — | not measured; see below |
+| 3 | must_pass | 0.9798 | 0.8828 | 枠 discrimination |
+| 4 | must_pass | 0.9949 | 0.9297 | 枠 + 事業者区分 |
+| 5 | must_pass | 0.5203 | 0.5938 | cross-programme |
+| 6 | must_pass | 0.9963 | 0.9375 | 交付規程 binding |
+| 7 | must_pass | 0.1246 | 0.4727 | named doc — clears gate 1 via `named_doc`, not score |
+| 8 | must_stop | 0.0000 | 0.3438 | off-topic |
+| 9 | must_pass | 0.5618 | 0.6172 | on-topic, absent → model declines at gate 2 |
+| 10 | must_pass | 0.5069 | 0.5547 | wrong year → model declines at gate 2 |
+| 101 | must_stop | 0.0000 | 0.3340 | off-topic, navigation |
+| 102 | must_stop | 0.0001 | 0.2773 | off-topic, programming |
+| 103 | must_stop | 0.0033 | **0.3613** | adjacent: corporate tax |
+| 104 | must_stop | 0.0015 | **0.3652** | adjacent: social insurance |
+
+**Voyage separates, and a threshold exists.**
+
+| | lowest must-pass | highest must-stop | gap |
+|---|---|---|---|
+| voyage | 0.4727 (Q7) | 0.3652 | **+0.1074** |
+| voyage, excluding Q7 | 0.5547 (Q10) | 0.3652 | **+0.1895** |
+
+**Recommended: `RERANK_SCORE_THRESHOLD=0.42` when `RERANK_BACKEND=voyage`.**
+That is the midpoint of the usable range and leaves ~0.055 of margin on each
+side. It also clears Q7 on score alone, so the `named_doc` pass stops being
+load-bearing for that question rather than merely redundant.
+
+The two *adjacent* negatives earned their place: at 0.3613 and 0.3652 they are
+the highest must-stops, above the off-topic ones (0.2773–0.3438). Calibrating
+on weather and Python alone would have suggested a threshold near 0.35 with
+apparently comfortable headroom, and the first plausible-sounding tax question
+would have gone through as a paid call.
+
+**Q2 is not measured.** Its rerank request was refused repeatedly, including
+after 120 s and 200 s of deliberate idle, so this is recorded as unmeasured
+rather than worked around. It does not change the boundary: Q2 is a must-pass,
+and the two questions most like it — Q3 and Q4, the other numeric 補助率 ones —
+score 0.8828 and 0.9297, far above the 0.4727 floor.
+
+### The trap this file exists to prevent
+
+Carrying `RERANK_SCORE_THRESHOLD=0.3` across backends would **not** fail loudly.
+Voyage's floor is ~0.28–0.37, so every off-topic question clears 0.3 and reaches
+Claude as a **paid** call. Gate 1 would still log, still print a score, and still
+say `pass` — it would simply have stopped being a gate.
 
 ## What this does not decide
 
