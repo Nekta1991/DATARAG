@@ -35,15 +35,6 @@ type EventData = Partial<{
   after_sec: number;
 }>;
 
-// Real questions from docs/validation_questions.md. A chip fills the input;
-// it never starts a run, so a stray click cannot spend money.
-const EXAMPLES = [
-  "北海道内で事業を実施する場合の要件は何ですか？",
-  "通常枠の補助額と補助率はいくらですか？",
-  "2027年度のデジタル化・AI導入補助金の公募スケジュールはいつですか？",
-  "明日の東京の天気を教えてください。",
-];
-
 const WORST_CASE_USD = 0.19; // rag/agent.py per-question hard cap
 
 // Decline reason codes from rag/agent.py (QueryResult.reason) -> explanation.
@@ -129,7 +120,7 @@ function toLine(ev: string, d: EventData): Line | null {
 
 export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: string }) {
   const router = useRouter();
-  const [question, setQuestion] = useState(EXAMPLES[0]);
+  const [question, setQuestion] = useState("");
   const [paid, setPaid] = useState(false);
   const [running, setRunning] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
@@ -331,7 +322,7 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
             <h2 className="ct"><label htmlFor="q">質問</label></h2>
             <div className="ct-rule" />
             <form className={s.qjoin} onSubmit={run}>
-              <input id="q" className={s.qin} value={question} maxLength={500} placeholder="補助金について質問してください"
+              <input id="q" className={s.qin} value={question} maxLength={500} placeholder="補助金制度などについて質問してください"
                      onChange={(e) => setQuestion(e.target.value)} disabled={running} />
               <button type="submit" className={`btn btn-primary ${s.qsub}`}
                       disabled={running || !question.trim() || blockedByBudget || !!apiError}>
@@ -372,13 +363,6 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
                 <Warn />予算上限 ${status?.budget_usd.toFixed(2)} を超える可能性があるため実行できません（最悪ケース ${WORST_CASE_USD.toFixed(2)}／問）。本番モードをオフにするとスタブで無料実行できます。
               </p>
             )}
-            <div className={s.chips}>
-              {EXAMPLES.map((q) => (
-                <button key={q} type="button" className={s.exchip} disabled={running} onClick={() => setQuestion(q)} title={q}>
-                  {q.length > 26 ? `${q.slice(0, 26)}…` : q}
-                </button>
-              ))}
-            </div>
             <label className={s.chk}>
               <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} disabled={running} />
               <span className={s.box}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg></span>

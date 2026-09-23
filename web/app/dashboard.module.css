@@ -42,12 +42,6 @@
 .qin { flex: 1 1 100%; min-width: 0; min-height: 40px; padding-inline: 8px; background: transparent; border: 0; font-size: 15px; font-family: var(--jp-body); }
 .qin:focus-visible { outline: none; }
 .qsub { margin-left: auto; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.exchip { font-family: var(--jp-body); font-size: 12.5px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--color-divider);
-  background: transparent; color: var(--color-neutral-800); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.exchip:not(:disabled):hover { background: var(--color-accent-100); border-color: var(--color-accent-300); color: var(--color-accent-800); }
-.exchip:not(:disabled):active { background: var(--color-accent-200); }
-.exchip:disabled { opacity: .45; cursor: not-allowed; }
 
 .chk { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; margin-top: 2px; position: relative; }
 .chk input { position: absolute; opacity: 0; width: 0; height: 0; }
