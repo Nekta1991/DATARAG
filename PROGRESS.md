@@ -1,9 +1,41 @@
 # Progress log
 
-## ▶ NEXT SESSION — START HERE (written 2026-09-22, end of session)
+## ▶ NEXT SESSION — START HERE (updated 2026-09-23)
 
 The dated session logs below are history. This section is the handoff: what exists,
 what is waiting on the user, and the ordered steps with costs and done-criteria.
+
+### Vercel migration — status 2026-09-23
+
+Goal: get the backend off this PC. The frontend is already on Vercel; the FastAPI
+API is not. **User decision 2026-09-23: stay on Voyage's unpaid tier** and accept the
+trade rather than add a payment method.
+
+Done, all $0 and committed:
+
+| | |
+|---|---|
+| Budget ceiling | Moved from `data/spend_ledger.jsonl` to the Neon table `spend_ledger`. A paid run **reserves** its worst case in one transaction under an advisory lock, then settles. Without this the $5 guard would read an empty file on every serverless cold start and silently stop existing. `scripts/test_ledger.py` 7/7, and it handled the 2026-09-23 paid runs correctly (0 leaked reservations) |
+| Reranker | `RERANK_BACKEND=local\|voyage`. Vercel has no GPU and bge is 2.29 GB + torch |
+| Rerank pool | Capped at 5,000 Voyage tokens, ordered by best rank in **either** stage so the BM25-only 北海道 chunk survives. Measured: 5,000 succeeds 3/3 on the unpaid tier, 6,500 fails 0/3 |
+| Threshold | **0.42 for voyage** (0.3 is bge's). `rag/agent.py` now refuses to start on a mismatch — that misconfiguration bills off-topic questions without failing |
+| Bundle | Voyage tokenizer vendored to `rag/assets/`; `transformers` off the serving path. `pyproject.toml` + `vercel.json` written |
+| Deps | `sse-starlette` and `pyjwt[crypto]` were missing from `requirements.txt` — they were only arriving via `mcp` |
+
+**Not done: nothing is deployed yet.** Remaining, in order:
+
+1. Create the Vercel project for the API (a second project in `web-gen-ai-teleapo`,
+   root directory = repo root). **Ask first — it creates a project in the user's team.**
+   Unverified: whether Vercel picks `pyproject.toml` over the root `requirements.txt`
+   for deps. If it installs torch the build will blow the 500 MB limit and say so.
+2. Set its env: `DATABASE_URL`, `VOYAGE_API_KEY`, `ANTHROPIC_MODEL`, `NEON_AUTH_*`,
+   `RERANK_BACKEND=voyage`, `RERANK_SCORE_THRESHOLD=0.42`, `API_ALLOWED_ORIGINS`.
+3. Point the existing `datarag` project's `RAG_API_URL` at it, replacing the ngrok URL.
+4. Re-run `scripts/test_api.py` against the deployed URL, then one paid query (~$0.02).
+
+Known cost of staying unpaid, measured — put this in MANUAL before the demo:
+**~1 query/minute**, and Q5-class questions get a different top passage
+(12 of 14 keep theirs at the 5,000-token budget). See `docs/rerank_comparison.md`.
 
 ### Snapshot
 
