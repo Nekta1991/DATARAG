@@ -149,22 +149,34 @@ _POLITE_TAIL = re.compile(
     r"(を?教えて(ください|下さい)?|について(教えて)?|でしょうか|ますでしょうか|"
     r"ですか|ますか|できますか|ください|下さい|かな|のか|ですね|です|ます|"
     r"[？?。、]\s*)$")
-_TRAILING_PARTICLE = re.compile(r"(は|が|を|に|へ|と|より|から|の)$")
+# Particles are replaced by spaces, not deleted, so the content words on either
+# side stay separate. Without this the leftovers actively hurt: 「自営業も申請
+# できますか」 normalized to 「自営業も申請」 scored 0.0589, while the same words
+# separated - 「自営業 申請」 - scored 0.2444, over the threshold.
+#
+# This has no Japanese tokenizer, so it will sometimes split inside a word. That
+# is safe here and only here: gate 1 takes the MAX of the raw and normalized
+# scores, so a bad split produces a worse variant that is simply ignored. The
+# measured negatives are untouched by it (weather 0.0001, tax 0.0136,
+# insurance 0.0043).
+_PARTICLE = re.compile(r"(?<=.)(も|は|が|を|に|へ|と|より|から|での|まで|の|で|や|か)(?=.|$)")
 
 
 def normalize_query(query: str) -> str:
-    """The question with interrogative and polite scaffolding removed.
+    """The question's content words, with interrogative and polite scaffolding
+    and grammatical particles removed.
 
-    Returns "" when nothing meaningful is left, so callers can skip it.
+    Returns "" when nothing meaningful is left, or when normalization changed
+    nothing, so callers can skip a pointless second search.
     """
-    q = unicodedata.normalize("NFKC", query).strip()
+    original = unicodedata.normalize("NFKC", query).strip()
+    q = original
     for _ in range(3):                       # 「…を教えてください。」 nests
         q = _POLITE_TAIL.sub("", q).strip()
     q = _INTERROGATIVE.sub(" ", q)
-    # Particles that only glued the question together now dangle.
-    q = re.sub(r"[\s　]+", " ", q).strip()
-    q = _TRAILING_PARTICLE.sub("", q).strip()
-    return q if len(q) >= 2 and q != unicodedata.normalize("NFKC", query).strip() else ""
+    q = _PARTICLE.sub(" ", q)
+    q = re.sub(r"[\s　]+", " ", q).strip(" 　・、。")
+    return q if len(q) >= 2 and q != original else ""
 
 
 # -- stage 1a: vector candidates --------------------------------------------

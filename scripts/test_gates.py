@@ -166,6 +166,18 @@ case("normalization does not rescue off-topic", "明日の東京の天気はど�
      FunctionModel(lambda m, i: (_ for _ in ()).throw(AssertionError("model called"))),
      "declined", "score_gate")
 
+# 13. The synonym case, which is why particles are replaced rather than dropped.
+# 自営業 appears ZERO times in the corpus; it says 個人事業主 (75 chunks). Asked
+# as 「自営業も申請できますか」 the score is 0.0356; normalized to 「自営業 申請」
+# it is 0.2444. The earlier normalizer left 「自営業も申請」 - 0.0589 - because a
+# dangling particle glues the content words together and drags the score down.
+SELF_EMPLOYED = "自営業も申請できますか"
+
+case("colloquial synonym -> rescued", SELF_EMPLOYED,
+     scripted("search_knowledge_base", {"query": SELF_EMPLOYED},
+              lambda out: answer(True, [quote_around(out, "事業")])),
+     "answered", "answered")
+
 
 def main():
     failed = 0
