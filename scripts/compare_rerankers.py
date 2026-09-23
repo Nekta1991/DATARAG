@@ -229,10 +229,18 @@ def separation(rows: list[dict], field: str) -> tuple[float, float, float]:
 
 def report(cache: dict) -> int:
     rows = [cache[str(c[0])] | {"id": c[0]} for c in CASES if str(c[0]) in cache]
-    rows = [r for r in rows if r.get("error") is None]
-    if not rows:
+    # A row can hold a bge score and no Voyage one: its rerank failed, or the
+    # error was cleared for a retry that has not happened yet. Either way it
+    # cannot contribute to a threshold, and silently reporting a separation
+    # computed from half the negatives would be worse than saying so.
+    scored = [r for r in rows if r.get("voyage_top") is not None and r.get("error") is None]
+    missing = [r["id"] for r in rows if r not in scored]
+    if not scored:
         print("nothing measured yet")
         return 1
+    if missing:
+        print(f"⚠ not yet measured: {missing} - the separation below is provisional")
+    rows = scored
 
     print(f"\n{'id':>4} {'expect':<10} {'bge':>8} {'voyage':>8}  note")
     for r in sorted(rows, key=lambda r: r["id"]):
