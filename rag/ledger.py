@@ -33,9 +33,9 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-import psycopg
 
 from rag import config  # noqa: F401  - loads .env
+from rag import db
 
 BUDGET_USD = float(os.getenv("BUDGET_USD", "5.00"))
 
@@ -62,7 +62,13 @@ class Reservation:
 
 
 def _connect():
-    return psycopg.connect(os.environ["DATABASE_URL"])
+    """A pooled connection (rag/db.py). Every write here already wraps itself
+    in `with conn.transaction():`, which is what makes the swap safe: a pooled
+    connection is returned to the pool rather than closed, so it does NOT
+    commit on exit the way `psycopg.connect()` did. The explicit transactions
+    were already load-bearing for the advisory lock, and they carry the commit
+    too."""
+    return db.connection()
 
 
 @contextmanager

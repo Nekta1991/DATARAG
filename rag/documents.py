@@ -27,9 +27,9 @@ import unicodedata
 from dataclasses import dataclass, field
 from functools import lru_cache
 
-import psycopg
 
 from rag import config  # noqa: F401  - loads .env, pins HF_HOME
+from rag import db
 from rag.retrieval import voyage_tokens
 
 MAX_TOKENS = int(os.getenv("FULLDOC_MAX_TOKENS", "20000"))
@@ -99,7 +99,7 @@ def _doc_id(filename: str) -> str:
 def document_catalog() -> list[dict]:
     """Every retrievable document. Built into the tool description, so the
     agent chooses from what exists instead of guessing a title."""
-    with psycopg.connect(_dsn()) as conn:
+    with db.connection() as conn:
         rows = conn.execute(
             """SELECT filename, program || COALESCE(' ' || waku, '') || ' ' || doc_type,
                       authority_rank, title, full_text
@@ -113,7 +113,7 @@ def document_catalog() -> list[dict]:
 def _name_keys() -> list[tuple[str, str, list[str]]]:
     """(doc_id, doc_type, 枠 names) per document. A 枠 with a parenthesised
     類型 gives both: 「インボイス枠（電子取引類型）」 -> インボイス枠, 電子取引類型."""
-    with psycopg.connect(_dsn()) as conn:
+    with db.connection() as conn:
         rows = conn.execute("SELECT filename, waku, doc_type FROM documents ORDER BY filename").fetchall()
     return [(_doc_id(fn), _nfkc(dt), [_nfkc(w) for w in re.split(r"[（）]", waku or "") if w])
             for fn, waku, dt in rows]
@@ -135,7 +135,7 @@ def named_documents(question: str) -> list[str]:
 
 
 def retrieve_full_document(doc_id: str, max_tokens: int = MAX_TOKENS) -> FullDocument:
-    with psycopg.connect(_dsn()) as conn:
+    with db.connection() as conn:
         row = conn.execute(
             """SELECT filename, program || COALESCE(' ' || waku, '') || ' ' || doc_type,
                       authority_rank, title, full_text

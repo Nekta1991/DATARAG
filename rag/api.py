@@ -24,7 +24,6 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 
 import jwt
-import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -32,6 +31,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from rag import agent as A
 from rag import config  # noqa: F401  - loads .env, pins HF_HOME
+from rag import db
 from rag import retrieval as R
 
 ALLOWED_ORIGINS = [o.strip() for o in
@@ -91,7 +91,7 @@ def require_admin(authorization: str | None = Header(default=None)) -> dict:
                             options={"verify_aud": False, "require": ["exp", "sub"]})
     except jwt.PyJWTError as e:
         raise HTTPException(401, f"invalid token: {type(e).__name__}")
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+    with db.connection() as conn:
         row = conn.execute('SELECT email, role, banned FROM neon_auth."user" WHERE id = %s',
                            (claims["sub"],)).fetchone()
     if row is None:
@@ -116,7 +116,7 @@ def health():
 
 @app.get("/api/status")
 def status(user: dict = Depends(require_admin)):
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+    with db.connection() as conn:
         docs, chunks = conn.execute(
             "SELECT (SELECT count(*) FROM documents), (SELECT count(*) FROM chunks)").fetchone()
     return {"documents": docs, "chunks": chunks, "model": A.MODEL, "effort": A.EFFORT,

@@ -28,6 +28,7 @@ dependencies = [
     "voyageai==0.5.0",
     "tokenizers==0.23.2",      # the vendored Voyage tokenizer, without transformers
     "psycopg[binary]==3.3.6",
+    "psycopg-pool==3.2.6",
     # serving
     "fastapi==0.141.1",
     "sse-starlette==3.4.11",

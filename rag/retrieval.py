@@ -31,10 +31,10 @@ from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 
-import psycopg
 import voyageai
 
 from rag import config  # noqa: F401  - loads .env, pins HF_HOME
+from rag import db
 
 VOYAGE_MODEL = os.getenv("VOYAGE_MODEL", "voyage-3.5")
 MIN_INTERVAL = float(os.getenv("VOYAGE_MIN_REQUEST_INTERVAL_SEC", "21"))
@@ -126,7 +126,7 @@ def _vec_literal(qvec: list[float]) -> str:
 
 
 def vector_candidates(qvec: list[float], k: int = TOP_K) -> list[Hit]:
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+    with db.connection() as conn:
         rows = conn.execute(
             """SELECT id, source_doc, authority_rank, filename, heading, page_no,
                       content, 1 - (embedding <=> %(q)s::vector) AS similarity
@@ -144,7 +144,7 @@ def _hydrate(ids: list[int], qvec: list[float]) -> dict[int, Hit]:
     computed too, so every candidate carries both signals."""
     if not ids:
         return {}
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+    with db.connection() as conn:
         rows = conn.execute(
             """SELECT id, source_doc, authority_rank, filename, heading, page_no,
                       content, 1 - (embedding <=> %(q)s::vector)
@@ -179,7 +179,7 @@ def _bigrams(text: str) -> list[str]:
 
 @lru_cache(maxsize=1)
 def _bm25_index():
-    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+    with db.connection() as conn:
         rows = conn.execute("SELECT id, content FROM chunks").fetchall()
     ids, tfs = [], []
     df: Counter = Counter()
