@@ -207,13 +207,28 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
         while ((cut = buf.search(/\r?\n\r?\n/)) >= 0) {
           const block = buf.slice(0, cut);
           buf = buf.slice(cut).replace(/^\r?\n\r?\n/, "");
-          let ev = "message"; let data = "";
+          let ev = "message"; const dataLines: string[] = [];
           for (const ln of block.split(/\r?\n/)) {
             if (ln.startsWith("event:")) ev = ln.slice(6).trim();
-            else if (ln.startsWith("data:")) data += ln.slice(5).trim();
+            else if (ln.startsWith("data:")) dataLines.push(ln.slice(5).trim());
           }
-          if (!data) continue;
-          const d = JSON.parse(data) as EventData;
+          if (!dataLines.length) continue;
+          // Per the SSE spec multiple data: lines join with "\n". The old code
+          // concatenated them with nothing, so if two events ever landed in one
+          // block their payloads fused into "valid JSON followed by more JSON"
+          // - which is exactly the shape of the reported failure,
+          // "Unexpected non-whitespace character after JSON at position 46".
+          const data = dataLines.join("\n");
+          let d: EventData;
+          try {
+            d = JSON.parse(data) as EventData;
+          } catch {
+            // Never let one malformed frame kill a run that is already paid
+            // for. Surface it where it can be diagnosed and keep reading.
+            setLines((xs) => [...xs, { tag: "WARN", tone: "warn", dur: "",
+              text: `解析できないイベント (${ev}): ${data.slice(0, 120)}` }]);
+            continue;
+          }
           if (ev === "run.id") { runIdRef.current = d.run_id ?? null; continue; }
           if (ev === "confirm.required") {
             setPending({ run_id: d.run_id ?? "", top_score: Number(d.top_score),
