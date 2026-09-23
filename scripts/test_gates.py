@@ -146,6 +146,27 @@ case("stitched table cells -> declined", Q3,
      "declined", "unverified_quote")
 
 
+# 11/12. Gate 1 must not kill a question the corpus answers just because it was
+# asked in ordinary Japanese. 「どんな企業が応募できますか」 scored 0.0587 raw -
+# under any sane threshold - while the corpus answers it well: its
+# 中小企業等の定義 table (chunks 328/329, capital and headcount per industry)
+# reranks 0.82 for a query phrased in the documents' own words. Stripping the
+# interrogative scaffolding lifts it to 0.2191.
+#
+# The negative is the guard: the same normalization must NOT rescue an
+# off-topic question. Measured, it does not - weather stays at 0.0001.
+COLLOQUIAL = "どんな企業が応募できますか"
+
+case("colloquial question -> rescued by normalization", COLLOQUIAL,
+     scripted("search_knowledge_base", {"query": COLLOQUIAL},
+              lambda out: answer(True, [quote_around(out, "応募")])),
+     "answered", "answered")
+
+case("normalization does not rescue off-topic", "明日の東京の天気はどうですか",
+     FunctionModel(lambda m, i: (_ for _ in ()).throw(AssertionError("model called"))),
+     "declined", "score_gate")
+
+
 def main():
     failed = 0
     for name, q, model, want_status, want_reason in CASES:

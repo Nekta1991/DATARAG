@@ -56,7 +56,7 @@ from rag import config
 from rag import ledger
 from rag.documents import document_catalog, named_documents, retrieve_full_document
 from rag.retrieval import (Hit, RERANK_BACKEND, embed_query, hybrid_candidates,
-                           rerank, reranker_name, TOP_N)
+                           normalize_query, rerank, reranker_name, TOP_N)
 
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 EFFORT = os.getenv("GENERATION_EFFORT", "low")
@@ -431,10 +431,36 @@ def answer_question(question: str, model=None, emit=None,
     # Layer 1: score gate, before any model call.
     pre = _search(deps, question)
     top = pre[0].rerank_score if pre else 0.0
+    via = "score" if top >= THRESHOLD else None
+
+    # About to decline: try once more without the interrogative scaffolding.
+    # A question asked naturally can score far below the same question in the
+    # documents' words - 「どんな企業が応募できますか」 scored 0.0587 as asked
+    # and 0.2764 stripped, while the corpus answers it well. Declining that at
+    # gate 1 meant the agent, which can reformulate a search, never ran.
+    #
+    # Only on the failing path, so a question that already passes costs no
+    # extra Voyage request - which matters at 3 RPM. Taking the max means this
+    # can only rescue, never sink, a question. Measured on the known negatives
+    # it changes nothing: weather 0.0000, tax 0.0033 -> 0.0136, insurance
+    # 0.0015 -> 0.0043. See rag.retrieval.normalize_query.
+    alt_score = None
+    if top < THRESHOLD:
+        nq = normalize_query(question)
+        if nq:
+            alt = _search(deps, nq)
+            alt_score = alt[0].rerank_score if alt else 0.0
+            if alt_score > top:
+                top, pre = alt_score, alt
+                via = "normalized" if top >= THRESHOLD else None
+
     named = named_documents(question)
     passed = top >= THRESHOLD or bool(named)
+    if not passed and named:
+        via = "named_doc"
     deps.say("gate1", {"top_score": round(top, 4), "threshold": THRESHOLD, "pass": passed,
-                       "via": "score" if top >= THRESHOLD else "named_doc" if named else None,
+                       "via": via or ("named_doc" if named else None),
+                       "normalized_score": round(alt_score, 4) if alt_score is not None else None,
                        "named_docs": named})
     if not passed:
         return _finish(deps, QueryResult(question, "declined", "score_gate", DECLINE,

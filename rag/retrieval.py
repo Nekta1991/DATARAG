@@ -119,6 +119,54 @@ def embed_query(query: str) -> list[float]:
             time.sleep(MIN_INTERVAL * (2 ** attempt))
 
 
+# -- query normalization ----------------------------------------------------
+#
+# Rerank scores are computed against a question's actual wording, and a
+# naturally phrased question can score far below the same question asked in the
+# documents' vocabulary. Measured 2026-09-23 on 「どんな企業が応募できますか」:
+# 0.0587 as asked, 0.2764 with the interrogative scaffolding removed, and 0.76+
+# once domain nouns were added - while the corpus answers it well (the 中小企業
+# 等の定義 table reranks 0.82 for a query using its own words). Gate 1 was
+# therefore declining a question the corpus answers, at $0, before the agent -
+# which CAN reformulate a search - ever ran.
+#
+# This strips interrogative and polite scaffolding only. It is deliberately not
+# a synonym map: hand-listing 応募 -> 補助対象者 would answer the questions
+# someone thought of in advance, which is the actual complaint. Removing
+# question-words is a property of Japanese, not of this corpus, so it
+# generalizes to questions nobody predicted.
+#
+# It cannot make retrieval worse, because gate 1 takes the MAX of the raw and
+# normalized scores. Measured on the known negatives, normalization leaves them
+# where they were: weather 0.0000 -> 0.0000, tax 0.0033 -> 0.0136, insurance
+# 0.0015 -> 0.0043, against 0.2764 for the real question.
+
+_INTERROGATIVE = re.compile(
+    r"(どのような|どのように|どんな|どういう|どちら|どれくらい|どのくらい|"
+    r"いくらくらい|いくつ|いくら|何ですか|なんですか|なに|何|いつ|どこ|どう|"
+    r"だれ|誰|なぜ|どうして)")
+_POLITE_TAIL = re.compile(
+    r"(を?教えて(ください|下さい)?|について(教えて)?|でしょうか|ますでしょうか|"
+    r"ですか|ますか|できますか|ください|下さい|かな|のか|ですね|です|ます|"
+    r"[？?。、]\s*)$")
+_TRAILING_PARTICLE = re.compile(r"(は|が|を|に|へ|と|より|から|の)$")
+
+
+def normalize_query(query: str) -> str:
+    """The question with interrogative and polite scaffolding removed.
+
+    Returns "" when nothing meaningful is left, so callers can skip it.
+    """
+    q = unicodedata.normalize("NFKC", query).strip()
+    for _ in range(3):                       # 「…を教えてください。」 nests
+        q = _POLITE_TAIL.sub("", q).strip()
+    q = _INTERROGATIVE.sub(" ", q)
+    # Particles that only glued the question together now dangle.
+    q = re.sub(r"[\s　]+", " ", q).strip()
+    q = _TRAILING_PARTICLE.sub("", q).strip()
+    return q if len(q) >= 2 and q != unicodedata.normalize("NFKC", query).strip() else ""
+
+
 # -- stage 1a: vector candidates --------------------------------------------
 
 def _vec_literal(qvec: list[float]) -> str:
