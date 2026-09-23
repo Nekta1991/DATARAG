@@ -1,6 +1,36 @@
 # Validation results — paid
 
-Run file `data/validation_runs/20260922-224505_paid.json` · model `claude-sonnet-5` · threshold 0.3 · prompt default · **8/10 passed** · run cost **$0.1794** · ledger $0.2336 / $5.00
+> ## ⚠ Q3 and Q6 were rerun on 2026-09-23 and both now PASS
+>
+> The table below is run 1 (2026-09-22) and is **stale for those two rows**.
+> Raw: `data/validation_runs/20260923-112157_paid.json` · $0.0405 · 2/2 passed.
+>
+> | # | run 1 | rerun 2026-09-23 | cost |
+> |---|---|---|---|
+> | 3 | `declined / unverified_quote` | **`answered / answered`**, top 0.980 | $0.0254 |
+> | 6 | `declined / no_citation` · A ✗ · B ✗ | **`answered / answered`** · **A ✓ · B ✓** | $0.0152 |
+>
+> **Q3 confirms the table-quote prompt fix.** The model now quotes a table row
+> whole, separators included — 「補助額 \| ５万円～１５０万円未満 \| １５０万円～
+> ４５０万円以下」 — instead of stitching the cells into prose, and gate 2
+> accepts it. Same fact, same passage, same retrieval; only the citation form
+> changed.
+>
+> **Q6 no longer fails, and it satisfies BOTH candidate rules.** It cited
+> 通常枠 第27条 *and* 複数者連携 第25条, which is exactly what rule B asks for,
+> under the default prompt. Two consequences:
+>
+> - The planned ~$0.11 A/B run (open issue 5) is **moot** — the run it was
+>   meant to decide between now passes either way. Do not spend it.
+> - The citation-cap hypothesis for Q6 (open issue 4) is **not confirmed**. The
+>   enumeration answer cited the article that introduces the list plus specific
+>   items and stayed within 「最大5件」. Whether the earlier `no_citation` was
+>   caused by the old prompt or was run-to-run variance is unresolved, and one
+>   rerun cannot separate those.
+>
+> A full 10-question rerun would cost ~$0.19 and has not been approved.
+
+Run file `data/validation_runs/20260922-224505_paid.json` · model `claude-sonnet-5` · threshold 0.3 · prompt default · **8/10 passed** · run cost **$0.1794** · ledger $0.2741 / $5.00
 
 | # | Status / path | Tools | Top | Req | Cost | status | path | contain | cite | must not | Result |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -25,35 +55,33 @@ Threshold 0.3 holds: the gap between the highest must-stop (0.000) and the lowes
 must-pass (0.254, Q7, which passes via `named_doc` rather than on score) is the whole
 usable range. Nothing sits near 0.3 from either side.
 
+**This applies to the local bge backend only.** Voyage's rerank API scores the same
+off-topic question ~0.33, so 0.3 would not be a gate there at all — see
+`docs/rerank_comparison.md`.
+
 ## Uncited sentences — read by hand (2026-09-23)
 
-Counts are per answered question above. Two of the five are clean; the other three
-split into two distinct causes, only one of which is a prompt lapse.
+Counts are per answered question below. Two of the five are clean; the rest split
+into two causes, only one of which is a prompt lapse.
 
 **A lapse (Q1, Q5): one trailing sentence each.** In both, the model adds a true,
 document-grounded sentence after the cited one and does not cite it. Q5's is
 verifiable — 「採択結果が未確定の段階での申請自体は差し支えありません」 is the なお
 sentence of 第７ in chunk 186, in the same passage the model already quoted from. So
-the cause is not missing evidence; it is that one citation per *answer* felt like
-enough. Target 0 is reachable here by prompt alone.
+the cause is not missing evidence. Target 0 looks reachable by prompt alone.
 
-**Structural (Q7): 31 of 36 uncited, and the prompt causes it.** The answer enumerates
-~36 article titles; 「主張ごとに1件、最大5件」 caps citations at 5. The two rules
-contradict each other on any enumeration answer — every article title is a claim, and
-5 < 36. The model resolved it by citing the anchors (第1/9/16/27/36条) and leaving the
-rest bare, which is the sane reading, but it means Q7 "passes" with 86% of its claims
-uncited.
+**Structural (Q7): 31 of 36 uncited.** The answer enumerates ~36 article titles;
+「主張ごとに1件、最大5件」 caps citations at 5. Every title is a claim and 5 < 36, so
+the two rules contradict each other on an enumeration. The model resolved it by
+citing the anchors (第1/9/16/27/36条) and leaving the rest bare.
 
-**This is the leading explanation for Q6's `no_citation` failure (open issue 4).**
-Q6 asks for a 取消 list — the same enumeration shape as Q7, against the same 第27条
-material. Q7 shows the model resolving the cap by under-citing; Q6 shows 1,398 output
-tokens and *zero* citations, i.e. plausibly the same conflict resolved the other way
-(give up on citing rather than cite 5 of N). If so, Q6 is not a retrieval or evidence
-failure and the A/B rule test in open issue 5 is aimed at the wrong thing: rules A and
-B both concern *which 枠 a shared rule covers*, and neither touches the citation cap.
-**Check `rows[].draft` on the `--only 6` rerun before spending anything on A/B** — if
-the draft is a long uncited 取消 list, the fix is the cap wording (e.g. "on an
-enumeration, cite the article that introduces the list"), not the shared-rules line.
+**A hypothesis this raised, and the evidence that did not confirm it.** Q6 is the
+same enumeration shape against the same 第27条 material, and in run 1 it produced
+1,398 output tokens and *zero* citations — which looked like the same conflict
+resolved the other way. The 2026-09-23 rerun does not support that: Q6 cited the
+introducing article plus specific items, stayed inside the cap, and passed. The
+earlier failure may have been the old prompt or may have been variance; one rerun
+cannot tell those apart, and it is not worth paying to find out.
 
 ## Per question
 
@@ -191,7 +219,7 @@ enumeration, cite the article that introduces the list"), not the shared-rules l
 - [デジタル化・AI導入補助金2026 通常枠 交付規程] 「第２７条 事務局は、補助事業者が次の各号のいずれかに該当するときは、第１６条第１項の規定 に基づく交付決定の全部又は一部を取り消すことができる。」
 - [デジタル化・AI導入補助金2026 通常枠 交付規程] 「第３６条 事務局は、本規程に定める事項のほか、補助事業の円滑かつ適正な運営を行うために 必要な事項について別途定める。」
 
-- [x] Uncited sentences (read by hand, target 0): **31 of 36** — structural, not a lapse: the answer enumerates ~36 article titles and 「最大5件」 caps citations at 5 (第1/9/16/27/36条). See the note below.
+- [x] Uncited sentences (read by hand, target 0): **31 of 36** — structural, not a lapse: the answer enumerates ~36 article titles and 「最大5件」 caps citations at 5 (第1/9/16/27/36条).
 
 - req 1: `retrieve_full_document`
 - req 2: `final_result`
