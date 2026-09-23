@@ -35,6 +35,31 @@ async function forward(request: Request, ctx: { params: Promise<{ path: string[]
     return Response.json({ detail: "RAG API unreachable (is the GPU machine and tunnel up?)" }, { status: 502 });
   }
 
+  // A reachable tunnel with nothing behind it is NOT a fetch failure: ngrok
+  // answers with its own error page, and for an offline endpoint that page is
+  // an HTTP 404. Passing it straight through surfaced as "API error 404 (/rag)"
+  // in the dashboard, which reads like a routing bug in this app and sent a
+  // debugging session after the wrong thing. The real cause is always the same:
+  // uvicorn or the tunnel is not running on the GPU machine.
+  //
+  // Our API only ever replies JSON or text/event-stream, so anything else came
+  // from the tunnel rather than from us.
+  const upstreamType = upstream.headers.get("content-type") ?? "";
+  const fromOurApi = /application\/json|text\/event-stream/.test(upstreamType);
+  if (!fromOurApi) {
+    const ngrokError = upstream.headers.get("ngrok-error-code");
+    return Response.json(
+      {
+        detail:
+          `RAG API is not answering behind the tunnel (upstream ${upstream.status}` +
+          `${ngrokError ? `, ${ngrokError}` : ""}). ` +
+          "Start it on the GPU machine: uvicorn rag.api:app --host 127.0.0.1 --port 8000, " +
+          "and ngrok http 8000 --url=<static domain>.",
+      },
+      { status: 502 },
+    );
+  }
+
   return new Response(upstream.body, {
     status: upstream.status,
     headers: {
