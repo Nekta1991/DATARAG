@@ -1,23 +1,32 @@
 /* Ported from the Claude Design canvas "DATARAG Console" (Organic). */
 .page { min-height: 100vh; container-type: inline-size; }
 
-/* header: one row down to 1180px, then a deliberate second row */
-.header { display: flex; align-items: center; gap: var(--space-2); padding: 18px 24px;
+/* Wraps at ANY width, not only under a breakpoint. The header needs ~1540px
+   to sit on one line, so between 1180px and that it used to overflow: .meta
+   was flex:none, .brand was the only shrinkable item, and the 非公式デモ tag
+   inside it overflowed and was painted over by the chips. That tag is the
+   disclaimer saying this is not an official government tool, so losing it is
+   a correctness problem, not a cosmetic one. Now .meta wraps to its own line
+   instead, and only the subtitle is allowed to shrink. */
+.header { display: flex; align-items: center; gap: var(--space-2); padding: 18px 24px; flex-wrap: wrap;
   background: var(--color-neutral-100); border-bottom: 1px solid var(--color-divider); }
-.brand { display: flex; align-items: center; gap: 11px; flex: 0 1 auto; min-width: 0; }
-.brand :global(.tag) { flex: none; }
+.brand { display: flex; align-items: center; gap: 11px; flex: 1 1 auto; min-width: 0; }
+.brand :global(.tag) { flex: none; white-space: nowrap; }   /* the disclaimer never shrinks or wraps */
 .wordmark { flex: none; font-family: var(--font-heading); font-size: 24px; line-height: 1; letter-spacing: .01em; color: var(--color-accent-700); }
-.subtitle { font-size: 12px; color: var(--color-neutral-700); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.meta { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; flex-wrap: wrap; }
+.subtitle { flex: 1 1 auto; font-size: 12px; color: var(--color-neutral-700); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.meta { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: 0 1 auto;
+  flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
 .budget { display: flex; align-items: center; gap: 9px; padding: 4px 12px 5px; border-radius: 999px; background: var(--color-surface);
   font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--color-neutral-800); }
 .bar { width: 64px; height: 4px; border-radius: 999px; background: var(--color-neutral-300); overflow: hidden; display: block; }
 .bar > i { display: block; height: 100%; border-radius: 999px; background: var(--color-accent); }
 .bar.over > i { background: var(--red-500); }
-.email { font-family: var(--mono); font-size: 11.5px; color: var(--color-neutral-700); }
+.email { font-family: var(--mono); font-size: 11.5px; color: var(--color-neutral-700);
+  max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Below this the second row is deliberate rather than incidental: the
+   chips get the full width instead of crowding to the right. */
 @container (max-width: 1180px) {
-  .header { flex-wrap: wrap; }
-  .meta { margin-left: 0; flex-basis: 100%; }
+  .meta { margin-left: 0; flex-basis: 100%; justify-content: flex-start; }
   .subtitle { white-space: normal; }
 }
 
@@ -144,3 +153,13 @@
   .tbl .vc { padding-right: 14px; }
   .consoleBody { max-height: 320px; }
 }
+
+/* Usage guard. Sits between the free half of the pipeline and the paid call,
+   which is the only point where declining still costs nothing. Accent border
+   rather than the decline red: this is a question, not a failure. */
+.guard { margin-top: 12px; border: 1px solid var(--color-accent-300); background: var(--color-accent-100); }
+.guardTitle { margin: 0 0 8px; font-weight: 600; color: var(--color-accent-800); }
+.guardLine { margin: 0 0 4px; font-size: 13px; color: var(--color-neutral-800); }
+.guardCost { margin: 0 0 12px; font-size: 13px; color: var(--color-neutral-800); }
+.guardCost b { font-variant-numeric: tabular-nums; }
+.guardActions { display: flex; gap: 8px; flex-wrap: wrap; }

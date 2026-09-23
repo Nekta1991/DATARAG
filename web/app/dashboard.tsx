@@ -64,7 +64,11 @@ const Cross = () => (
 const Warn = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
 );
+// The stages the console will print. CONFIRM only appears in paid mode,
+// because that is the only mode where the run pauses to ask.
 const PIPELINE = ["EMBED", "VECTOR", "BM25", "RERANK", "GATE 1", "AGENT", "GATE 2"];
+const pipelineFor = (paid: boolean) =>
+  paid ? PIPELINE.flatMap((p) => (p === "AGENT" ? ["CONFIRM", p] : [p])) : PIPELINE;
 
 const ms = (v?: number) => (typeof v === "number" ? (v >= 1000 ? `${(v / 1000).toFixed(2)}s` : `${v}ms`) : "");
 const num = (v?: number) => (typeof v === "number" ? v.toLocaleString("en-US") : "?");
@@ -334,7 +338,7 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
                 {running ? "実行中…" : "検索して回答"}
               </button>
               {running && (
-                <button type="button" className={`btn ${s.qsub}`} onClick={() => decide(false)}>
+                <button type="button" className="btn btn-secondary" onClick={() => decide(false)}>
                   中止
                 </button>
               )}
@@ -344,21 +348,20 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
                 free; nothing has been sent to Claude yet. Declining here costs
                 exactly $0, which is the reason the pause is at this point. */}
             {pending && (
-              <div role="alertdialog" aria-live="assertive" className="card" style={{ marginTop: 12 }}>
-                <p style={{ margin: "0 0 8px", fontWeight: 600 }}>
-                  有償で実行しますか？
+              <div role="alertdialog" aria-live="assertive" aria-labelledby="guard-title"
+                   className={`card ${s.guard}`}>
+                <p id="guard-title" className={s.guardTitle}>有償で実行しますか？</p>
+                <p className={s.guardLine}>
+                  検索とゲート1は完了しました（関連度 {pending.top_score.toFixed(4)}）。ここまでは無料です。
                 </p>
-                <p style={{ margin: "0 0 4px", fontSize: 13 }}>
-                  検索は完了しました（関連度 {pending.top_score.toFixed(4)}）。ここまでは無料です。
+                <p className={s.guardCost}>
+                  実行すると Claude API を呼び出し、<b>約 ${pending.estimated_usd.toFixed(2)}</b>（上限 ${WORST_CASE_USD.toFixed(2)}）が課金されます。
                 </p>
-                <p style={{ margin: "0 0 12px", fontSize: 13 }}>
-                  実行すると Claude API を呼び出し、約 ${pending.estimated_usd.toFixed(2)}（上限 ${WORST_CASE_USD.toFixed(2)}）が課金されます。
-                </p>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" className="btn btn-primary" onClick={() => decide(true)}>
+                <div className={s.guardActions}>
+                  <button type="button" className="btn btn-primary" autoFocus onClick={() => decide(true)}>
                     実行する（約 ${pending.estimated_usd.toFixed(2)}）
                   </button>
-                  <button type="button" className="btn" onClick={() => decide(false)}>
+                  <button type="button" className="btn btn-secondary" onClick={() => decide(false)}>
                     やめる（$0）
                   </button>
                 </div>
@@ -465,7 +468,7 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
                 <>
                   <div className={s.idleNote}>waiting for a question — pipeline stages</div>
                   <div className={s.pipe}>
-                    {PIPELINE.map((p, i) => <Fragment key={p}>{i > 0 && <i>→</i>}<span>{p}</span></Fragment>)}
+                    {pipelineFor(paid).map((p, i) => <Fragment key={p}>{i > 0 && <i>→</i>}<span>{p}</span></Fragment>)}
                   </div>
                 </>
               )}
