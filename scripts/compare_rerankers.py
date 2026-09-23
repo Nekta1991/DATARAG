@@ -188,10 +188,16 @@ def measure(cache: dict) -> dict:
             if qvec is None:
                 qvec = spaced(R.embed_query, q, tokens=100)
                 row["qvec"] = qvec
-            hits = R.hybrid_candidates(q, qvec)
-            row["pool"] = len(hits)
+            pool = R.hybrid_candidates(q, qvec)
+            # Both backends must score the SAME passages or the comparison is
+            # meaningless. The Voyage path cannot take the full pool on the
+            # unpaid tier, so the budgeted subset is what both get.
+            hits = R.budget_pool(pool, R.VOYAGE_RERANK_TOKEN_BUDGET)
+            row["pool"] = len(pool)
+            row["pool_scored"] = len(hits)
+            row["pool_dropped"] = len(pool) - len(hits)
 
-            ranked = R.rerank(q, list(hits))
+            ranked = R._rerank_local_scored(q, list(hits))
             row["bge_top"] = round(ranked[0].rerank_score, 6) if ranked else 0.0
             row["bge_top5"] = [[h.chunk_id, round(h.rerank_score, 6)] for h in ranked[:5]]
 

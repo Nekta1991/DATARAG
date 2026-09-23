@@ -51,6 +51,17 @@ RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
 # send off-topic questions to Claude as paid calls. See docs/rerank_comparison.md.
 RERANK_BACKEND = os.getenv("RERANK_BACKEND", "local")
 VOYAGE_RERANK_MODEL = os.getenv("VOYAGE_RERANK_MODEL", "rerank-2.5")
+# Token budget for ONE rerank request, applied only to the voyage backend.
+# The local cross-encoder scores the pool in batches on its own GPU and has no
+# such limit, so capping it there would throw away candidates for nothing.
+#
+# Measured 2026-09-23: Voyage's unpaid tier allows 10,000 tokens/minute, and a
+# full candidate pool for this corpus runs 2,872-10,262 tokens. Requests at
+# 8,651 and 9,272 went through; 9,430 and 9,536 were refused even with a clear
+# window, so the usable ceiling sits just under ~9,400 and a third of the
+# questions would simply fail. 8,000 leaves margin for Voyage's own per-
+# document overhead (it bills ~4% above a local token count).
+VOYAGE_RERANK_TOKEN_BUDGET = int(os.getenv("VOYAGE_RERANK_TOKEN_BUDGET", "8000"))
 TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "20"))
 LEXICAL_TOP_K = int(os.getenv("LEXICAL_TOP_K", "10"))
 TOP_N = int(os.getenv("RERANK_TOP_N", "5"))
@@ -237,29 +248,72 @@ def _rerank_local(query: str, hits: list[Hit]) -> None:
         h.rerank_score = float(s)
 
 
-def _rerank_voyage(query: str, hits: list[Hit]) -> None:
-    """One API call for the whole candidate pool.
+def _rerank_local_scored(query: str, hits: list[Hit]) -> list[Hit]:
+    """Score with the local model regardless of RERANK_BACKEND, and return the
+    ranking. Used to compare the two backends over one identical pool."""
+    _rerank_local(query, hits)
+    return sorted(hits, key=lambda h: h.rerank_score, reverse=True)
 
-    Size matters here: a ~25-chunk pool costs 8,600-9,300 tokens, and the
-    unpaid tier allows 10,000 tokens per minute. So one query very nearly
-    spends the whole minute, and the *token* ceiling binds long before the
-    3-requests-per-minute one. Retries are therefore not free - a failed
-    rerank cannot simply be tried again inside the same minute.
+
+@lru_cache(maxsize=1)
+def _voyage_tokenizer():
+    from huggingface_hub import snapshot_download
+    from transformers import AutoTokenizer
+    # voyage-3.5 ships no config.json, so from_pretrained(repo_id) fails
+    # offline; resolve the snapshot directory first.
+    return AutoTokenizer.from_pretrained(
+        snapshot_download("voyageai/voyage-3.5", local_files_only=True))
+
+
+def budget_pool(hits: list[Hit], budget: int) -> list[Hit]:
+    """The largest prefix of the pool that fits `budget` tokens.
+
+    Order is by a candidate's BEST position in either stage, not by vector
+    rank. That distinction is the whole point: the 北海道 gold chunk is found
+    only by BM25 (vector rank None, lexical rank 1), so ordering by vector rank
+    would sort it last and the budget would drop exactly the chunk the hybrid
+    stage exists to rescue. Verified: it survives an 8,000-token cap and still
+    reranks to #1.
+
+    Dropping is by length, implicitly - a long chunk that does not fit is
+    skipped while shorter, lower-priority ones still get in. That is deliberate:
+    a 3,000-token table should not evict four whole candidates.
     """
-    res = _voyage().rerank(query=query, documents=[h.content for h in hits],
+    tok = _voyage_tokenizer()
+    inf = float("inf")
+    order = sorted(hits, key=lambda h: (min(h.vector_rank or inf, h.lexical_rank or inf),
+                                        h.vector_rank or inf))
+    kept, used = [], 0
+    for h in order:
+        n = len(tok(h.content, add_special_tokens=False)["input_ids"])
+        if used + n <= budget:
+            kept.append(h)
+            used += n
+    return kept
+
+
+def _rerank_voyage(query: str, hits: list[Hit]) -> list[Hit]:
+    """One API call, over as much of the pool as the token budget allows.
+
+    Returns the scored subset - callers must use it rather than the pool they
+    passed in, because anything dropped here has no score.
+    """
+    kept = budget_pool(hits, VOYAGE_RERANK_TOKEN_BUDGET)
+    res = _voyage().rerank(query=query, documents=[h.content for h in kept],
                            model=VOYAGE_RERANK_MODEL)
     for r in res.results:
-        hits[r.index].rerank_score = float(r.relevance_score)
-    for h in hits:                      # defensive: the API returned every doc
+        kept[r.index].rerank_score = float(r.relevance_score)
+    for h in kept:                      # defensive: the API returned every doc
         if h.rerank_score is None:
             h.rerank_score = 0.0
+    return kept
 
 
 def rerank(query: str, hits: list[Hit]) -> list[Hit]:
     if not hits:
         return hits
     if RERANK_BACKEND == "voyage":
-        _rerank_voyage(query, hits)
+        hits = _rerank_voyage(query, hits)   # may be a subset: see budget_pool
     elif RERANK_BACKEND == "local":
         _rerank_local(query, hits)
     else:
