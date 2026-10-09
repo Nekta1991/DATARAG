@@ -30,3 +30,9 @@ node_modules/
 
 # Local spend ledger (moves to Neon for deployment)
 data/spend_ledger.jsonl
+
+# Vercel CLI link for the API project
+.vercel
+
+.vercel
+.env*

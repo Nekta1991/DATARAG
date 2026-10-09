@@ -15,6 +15,7 @@ type Citation = { source_doc: string; quote: string };
 type Answer = {
   status: "answered" | "declined"; reason: string; answer: string;
   citations: Citation[]; rejected_quotes: string[];
+  unsupported_figures?: string[]; // advisory, rag/agent.py unsupported_figures
 };
 type Status = { documents: number; chunks: number; model: string; effort: string;
   threshold: number; spent_usd: number; budget_usd: number; busy: boolean };
@@ -29,6 +30,7 @@ type EventData = Partial<{
   input_tokens: number; cache_read_tokens: number; output_tokens: number; cost_usd: number;
   ledger_total_usd: number; budget_usd: number; type: string; message: string; t_ms: number;
   candidates: Candidate[]; answer: string; rejected_quotes: string[];
+  total: number; found: number; missing: string[];
   via: "score" | "named_doc" | "normalized" | null; named_docs: string[];
   normalized_score: number | null;
   run_id: string; estimated_usd: number; max_usd: number; timeout_sec: number;
@@ -57,7 +59,7 @@ const Warn = () => (
 );
 // The stages the console will print. CONFIRM only appears in paid mode,
 // because that is the only mode where the run pauses to ask.
-const PIPELINE = ["EMBED", "VECTOR", "BM25", "RERANK", "GATE 1", "AGENT", "GATE 2"];
+const PIPELINE = ["EMBED", "VECTOR", "BM25", "RERANK", "GATE 1", "AGENT", "GATE 2", "FIGURES"];
 const pipelineFor = (paid: boolean) =>
   paid ? PIPELINE.flatMap((p) => (p === "AGENT" ? ["CONFIRM", p] : [p])) : PIPELINE;
 
@@ -104,6 +106,11 @@ function toLine(ev: string, d: EventData): Line | null {
     case "gate2": return { tag: "GATE 2", tone: d.pass ? "pass" : "fail", dur: "",
       text: d.answerable === false ? "answerable=false → DECLINE"
         : `${d.verified}/${d.citations} quotes found verbatim under their source_doc → ${d.pass ? "PASS" : `DECLINE (${d.reason})`}` };
+    // Advisory: gate 2 verifies at most five quotes; this checks every
+    // figure in the answer against the retrieved text. It never declines.
+    case "figures": return { tag: "FIGURES", tone: d.missing?.length ? "warn" : "pass", dur: "",
+      text: d.total === 0 ? "no figures in the answer"
+        : `${d.found}/${d.total} figures found in retrieved text${d.missing?.length ? ` · not found: ${d.missing.join(", ")}` : ""}` };
     case "answer": return { tag: d.status === "answered" ? "ANSWER" : "DECLINE", tone: d.status === "answered" ? "pass" : "fail",
       text: d.status === "answered"
         ? `answer emitted · ${Array.isArray(d.citations) ? d.citations.length : 0} citation${Array.isArray(d.citations) && d.citations.length === 1 ? "" : "s"}`
@@ -121,7 +128,9 @@ function toLine(ev: string, d: EventData): Line | null {
 export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: string }) {
   const router = useRouter();
   const [question, setQuestion] = useState("");
-  const [paid, setPaid] = useState(false);
+  // Paid by default: the real answer is the point. Stub stays one click away
+  // for free tests, and a paid run still stops at CONFIRM before spending.
+  const [paid, setPaid] = useState(true);
   const [running, setRunning] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -383,7 +392,7 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
               <span className={s.box}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg></span>
               <span className={s.chkTxt}>
                 本番モード（Claude API・課金 約$0.03／問、上限 ${WORST_CASE_USD.toFixed(2)}）
-                <em>{paid ? "オン: 実際に課金されます" : "オフ: スタブで無料実行（検索とゲート1は実データ）"}</em>
+                <em>{paid ? "オン: 実際に課金されます" : "オフ（テスト用）: スタブで無料実行（検索とゲート1は実データ）"}</em>
               </span>
             </label>
           </section>
@@ -404,6 +413,11 @@ export default function Dashboard({ email, apiUrl }: { email: string; apiUrl: st
             {answer && answered && (
               <>
                 <div className={s.answerText}>{answer.answer.split(/\n+/).map((p, i) => <p key={i}>{p}</p>)}</div>
+                {!!answer.unsupported_figures?.length && (
+                  <p role="note" className="blocked">
+                    <Warn />次の数値は取得した文書中に見つかりませんでした（要確認）: {answer.unsupported_figures.join("、")}
+                  </p>
+                )}
                 <h3 className={`jph ${s.citeHead}`}>引用（{answer.citations.length}件・検証済）</h3>
                 {answer.citations.map((c, i) => (
                   <div key={i} className={s.cite}>
