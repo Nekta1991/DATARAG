@@ -70,8 +70,10 @@ def main():
             # very start, rather than only once gate 1 has reported.
             want = ["run.id", "run.start", "embed.done", "vector.done", "bm25.done",
                     "rerank.done", "gate1", "agent.start", "agent.tool_call",
-                    "agent.tool_result", "gate2", "answer", "usage", "done"]
+                    "agent.tool_result", "gate2", "figures", "answer", "usage", "done"]
             check("stream carries every stage in order", names == want)
+            figs = next((d for e, d in evs if e == "figures"), {})
+            check("stub answer: every figure found in retrieved text", figs.get("missing") == [], str(figs))
             d = dict(evs)
             check("gate1 passes at 0.8907", d["gate1"]["pass"] and d["gate1"]["top_score"] == 0.8907)
             check("rerank carries 5 candidates", len(d["rerank.done"]["candidates"]) == 5)

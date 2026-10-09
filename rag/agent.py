@@ -158,6 +158,9 @@ class QueryResult:
     # (the decline is final); kept so a paid decline can be diagnosed from the
     # run file instead of paying to reproduce it.
     draft: dict | None = None
+    # Figures in the answer found nowhere in the retrieved text. Advisory -
+    # see unsupported_figures.
+    unsupported_figures: list[str] = field(default_factory=list)
 
 
 # -- tools ------------------------------------------------------------------
@@ -357,6 +360,44 @@ def verify_citations(answer: Answer, deps: Deps) -> list[str]:
     return bad
 
 
+# Figures with a unit: amounts, headcounts, rates, durations. Bare numbers are
+# skipped - in this corpus they are mostly list markers like （１）.
+_FIGURE = re.compile(r"((?:\d[\d,]*(?:\.\d+)?[千万億]*)+)(円|人|%|倍|割|か月|ヶ月|カ月|箇月|年|月|日|件|社|回)")
+_UNIT = {"ヶ月": "か月", "カ月": "か月", "箇月": "か月"}
+_MULT = {"千": 1e3, "万": 1e4, "億": 1e8}
+
+
+def _figures(text: str) -> dict[tuple[float, str], str]:
+    """(value, unit) -> the figure as written. Values, not strings, so the
+    answer's 5千万円 matches the source's ５，０００万円."""
+    out = {}
+    for m in _FIGURE.finditer(_norm(text)):
+        value = 0.0
+        for n, mults in re.findall(r"(\d[\d,]*(?:\.\d+)?)([千万億]*)", m.group(1)):
+            v = float(n.replace(",", ""))
+            for k in mults:
+                v *= _MULT[k]
+            value += v
+        out.setdefault((value, _UNIT.get(m.group(2), m.group(2))), m.group(0))
+    return out
+
+
+def unsupported_figures(answer: str, deps: Deps) -> tuple[int, list[str]]:
+    """Gate 2 checks at most five quotes, so most of an answer can be
+    unverified - a 13-row eligibility table was answered with 4 citations
+    (2026-10-09). This checks the rest for free: every figure in the answer
+    must appear somewhere in what the tools returned this run. Any source
+    counts, so it catches invented numbers, not mis-attributed ones.
+
+    Advisory only: by the time it runs the answer is paid for, and a derived
+    figure (a sum, a half) is legitimately absent from the text."""
+    have = set()
+    for _, t in deps.evidence:
+        have |= _figures(t).keys()
+    figs = _figures(answer)
+    return len(figs), [s for key, s in figs.items() if key not in have]
+
+
 # -- cost & ledger ----------------------------------------------------------
 
 def _cost(u) -> tuple[dict, float]:
@@ -413,7 +454,8 @@ def _settle(reservation, r: QueryResult) -> None:
 def _finish(deps: Deps, r: QueryResult) -> QueryResult:
     deps.say("answer", {"status": r.status, "reason": r.reason, "answer": r.answer,
                         "citations": [c.model_dump() for c in r.citations],
-                        "rejected_quotes": r.rejected_quotes, "tool_calls": r.tool_calls})
+                        "rejected_quotes": r.rejected_quotes, "tool_calls": r.tool_calls,
+                        "unsupported_figures": r.unsupported_figures})
     deps.say("usage", {**{k: v for k, v in r.usage.items() if k != "details"},
                        "cost_usd": r.cost_usd, "ledger_total_usd": round(spent_so_far(), 4),
                        "budget_usd": BUDGET_USD})
@@ -562,10 +604,14 @@ def answer_question(question: str, model=None, emit=None,
                        "pass": reason == "answered", "reason": reason})
 
     ok = reason == "answered"
+    missing = []
+    if ok:
+        total, missing = unsupported_figures(out.answer, deps)
+        deps.say("figures", {"total": total, "found": total - len(missing), "missing": missing})
     r = QueryResult(question, "answered" if ok else "declined", reason,
                     out.answer if ok else DECLINE, out.citations if ok else [],
                     deps.tool_calls, top, usage, cost, bad, trace,
-                    None if ok else out.model_dump())
+                    None if ok else out.model_dump(), missing)
     if paid:
         _settle(reservation, r)
     return _finish(deps, r)

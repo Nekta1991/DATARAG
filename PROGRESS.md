@@ -22,7 +22,24 @@ Done, all $0 and committed:
 | Bundle | Voyage tokenizer vendored to `rag/assets/`; `transformers` off the serving path. `pyproject.toml` + `vercel.json` written |
 | Deps | `sse-starlette` and `pyjwt[crypto]` were missing from `requirements.txt` — they were only arriving via `mcp` |
 
-**Not done: nothing is deployed yet.** Remaining, in order:
+**✅ Deployed 2026-10-09.** Vercel project `datarag-api` → **https://datarag-api.vercel.app**
+(region `sin1`, next to Neon; `framework: fastapi` in `vercel.json` — without it the build
+fails with "pattern doesn't match any Serverless Functions"). An allowlist `.vercelignore`
+uploads only `rag/`, `pyproject.toml`, `vercel.json` (84 KB); deps come from `pyproject.toml`
+(272 MB bundle, no torch). 20 env vars copied from `.env`, incl. `ANTHROPIC_API_KEY` (missing
+from the list below). `datarag`'s `RAG_API_URL` now points at it — **the site no longer needs
+this PC, uvicorn or ngrok.** Verified: proxy health 200, warm in 3.4 s; unauthenticated status 401.
+Admin sign-in works; first paid run on Vercel 2026-10-09: answered, $0.0291, ledger
+$0.4143 / $5.00, 0 leaked reservations.
+
+Same day: **paid mode is the dashboard default** (stub = off switch, for tests; CONFIRM
+still gates spend), and a **figure check** after gate 2 (`unsupported_figures`,
+`rag/agent.py`): every 円/人/%/… figure in the answer must appear in this run's retrieved
+text. Advisory — console `FIGURES` line + a note on the answer card, never a decline.
+Reason: gate 2 verifies ≤5 quotes, and a 13-row eligibility answer had 4.
+⚠ `web/app/dashboard.tsx` was edited for both (Design-owned file) — carry over if Design re-exports.
+
+The original plan, for reference:
 
 1. Create the Vercel project for the API (a second project in `web-gen-ai-teleapo`,
    root directory = repo root). **Ask first — it creates a project in the user's team.**

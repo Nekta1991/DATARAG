@@ -1,0 +1,12 @@
+# Upload allowlist for the API project (deployed from the repo root).
+# The web project deploys from web/ and never reads this file.
+#
+# Allowlist, not blocklist: the root holds .env, keys.txt, a 4 GB .venv and the
+# 2.7 GB model cache, and a forgotten line in a blocklist would ship one of them.
+# requirements.txt stays out too - it pins CUDA torch, and the build must take
+# its dependencies from pyproject.toml alone.
+/*
+!/rag
+!/pyproject.toml
+!/vercel.json
+/rag/__pycache__
